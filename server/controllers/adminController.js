@@ -44,9 +44,9 @@ const isValidUUID = (value) =>
 /**
  * Ensure admin access
  */
-const ensureAdmin = (req, next) => {
+const ensureAdmin = (req) => {
   if (!req.user || req.user.role !== "admin") {
-    return next(new AppError("Admin access only", 403));
+    throw new AppError("Admin access only", 403);
   }
 };
 
@@ -883,6 +883,10 @@ export const getAllProducts = asyncHandler(async (req, res, next) => {
   }
 
   // DATE RANGE
+  if (createdFrom && createdTo) {
+    validateDateRange(createdFrom, createdTo);
+  }
+
   if (createdFrom) {
     query = query.gte("created_at", new Date(createdFrom).toISOString());
   }
@@ -1299,10 +1303,16 @@ export const getAllReviews = asyncHandler(async (req, res, next) => {
   }
 
   // PRODUCT
-  if (productId) query = query.eq("product_id", productId);
+  if (productId) {
+    if (!isValidUUID(productId)) throw new AppError("Invalid product ID", 400);
+    query = query.eq("product_id", productId);
+  }
 
   // USER
-  if (userId) query = query.eq("user_id", userId);
+  if (userId) {
+    if (!isValidUUID(userId)) throw new AppError("Invalid user ID", 400);
+    query = query.eq("user_id", userId);
+  }
 
   // EXACT RATING
   if (rating) query = query.eq("rating", Number(rating));
@@ -1317,6 +1327,9 @@ export const getAllReviews = asyncHandler(async (req, res, next) => {
   }
 
   // DATE RANGE
+  if (createdFrom && createdTo) {
+    validateDateRange(createdFrom, createdTo);
+  }
   if (createdFrom)
     query = query.gte("created_at", new Date(createdFrom).toISOString());
   if (createdTo)
@@ -1456,6 +1469,9 @@ export const getOrders = asyncHandler(async (req, res, next) => {
   if (maxTotal) query = query.lte("total_price", Number(maxTotal));
 
   // DATE RANGE
+  if (createdFrom && createdTo) {
+    validateDateRange(createdFrom, createdTo);
+  }
   if (createdFrom)
     query = query.gte("created_at", new Date(createdFrom).toISOString());
   if (createdTo)
@@ -1920,6 +1936,9 @@ export const getCoupons = asyncHandler(async (req, res, next) => {
   }
 
   // CREATION DATE RANGE
+  if (createdFrom && createdTo) {
+    validateDateRange(createdFrom, createdTo);
+  }
   if (createdFrom)
     query = query.gte("created_at", new Date(createdFrom).toISOString());
   if (createdTo)
