@@ -1,0 +1,24 @@
+[
+  {
+    "id": "u_demo",
+    "name": "Demo User",
+    "email": "demo@customforge.dev",
+    "password": "demo123",
+    "role": "user",
+    "avatar": "/placeholder.svg?height=100&width=100",
+    "phone": "+1 555-0123",
+    "verified": true,
+    "twoFactorEnabled": false,
+    "createdAt": "2024-01-01T00:00:00Z"
+  },
+  {
+    "id": "u_admin",
+    "name": "Admin User",
+    "email": "admin@customforge.dev",
+    "password": "admin123",
+    "role": "admin",
+    "verified": true,
+    "twoFactorEnabled": true,
+    "createdAt": "2024-01-01T00:00:00Z"
+  }
+]

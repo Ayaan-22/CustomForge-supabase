@@ -1,0 +1,47 @@
+[
+  {
+    "id": "p_gpu_1",
+    "name": "CustomForge Shadow RTX 4070",
+    "slug": "shadow-rtx-4070",
+    "price": 54900,
+    "brand": "NVIDIA",
+    "category": "GPU",
+    "image": "/placeholder.svg?height=600&width=800",
+    "rating": 4.7,
+    "reviewsCount": 214,
+    "stock": 25,
+    "featured": true,
+    "specs": { "vram": "12GB GDDR6X", "boostClock": "2.5GHz" },
+    "description": "High-efficiency 1440p gaming GPU with DLSS3."
+  },
+  {
+    "id": "p_cpu_1",
+    "name": "CustomForge Ember i7 13700K",
+    "slug": "ember-i7-13700k",
+    "price": 38900,
+    "brand": "Intel",
+    "category": "CPU",
+    "image": "/placeholder.svg?height=600&width=800",
+    "rating": 4.6,
+    "reviewsCount": 120,
+    "stock": 18,
+    "featured": true,
+    "specs": { "cores": 16, "threads": 24, "baseClock": "3.4GHz" },
+    "description": "Hybrid architecture performance for creators and gamers."
+  },
+  {
+    "id": "p_mb_1",
+    "name": "CustomForge Nexus B650",
+    "slug": "nexus-b650",
+    "price": 18900,
+    "brand": "ASUS",
+    "category": "Motherboard",
+    "image": "/placeholder.svg?height=600&width=800",
+    "rating": 4.5,
+    "reviewsCount": 80,
+    "stock": 30,
+    "featured": false,
+    "specs": { "socket": "AM5", "formFactor": "ATX" },
+    "description": "PCIe 5.0 ready motherboard with robust power stages."
+  }
+]

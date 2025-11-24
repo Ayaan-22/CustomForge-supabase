@@ -1,0 +1,24 @@
+[
+  {
+    "id": "pm_demo_1",
+    "userId": "u_demo",
+    "type": "card",
+    "brand": "Visa",
+    "last4": "4242",
+    "expMonth": 12,
+    "expYear": 2028,
+    "isDefault": true,
+    "createdAt": "2024-01-15T00:00:00Z"
+  },
+  {
+    "id": "pm_demo_2",
+    "userId": "u_demo",
+    "type": "card",
+    "brand": "Mastercard",
+    "last4": "5555",
+    "expMonth": 6,
+    "expYear": 2026,
+    "isDefault": false,
+    "createdAt": "2024-03-20T00:00:00Z"
+  }
+]

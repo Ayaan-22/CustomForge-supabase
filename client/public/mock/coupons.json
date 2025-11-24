@@ -1,0 +1,6 @@
+[
+  { "code": "SAVE10", "discount": 10, "type": "percentage", "minOrder": 5000 },
+  { "code": "WELCOME20", "discount": 20, "type": "percentage", "minOrder": 10000 },
+  { "code": "FLAT500", "discount": 500, "type": "fixed", "minOrder": 3000 },
+  { "code": "GAMING15", "discount": 15, "type": "percentage", "minOrder": 20000 }
+]

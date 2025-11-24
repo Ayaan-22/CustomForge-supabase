@@ -1,0 +1,47 @@
+[
+  {
+    "id": "r_1",
+    "productId": "p_gpu_1",
+    "userId": "u_demo",
+    "userName": "Demo User",
+    "rating": 5,
+    "comment": "Absolutely amazing GPU! Runs all my games at ultra settings with no issues.",
+    "createdAt": "2024-10-25T12:00:00Z"
+  },
+  {
+    "id": "r_2",
+    "productId": "p_gpu_1",
+    "userId": "u_guest",
+    "userName": "GamerPro99",
+    "rating": 4,
+    "comment": "Great performance but runs a bit hot under load. Get a good cooler!",
+    "createdAt": "2024-11-01T08:30:00Z"
+  },
+  {
+    "id": "r_3",
+    "productId": "p_cpu_1",
+    "userId": "u_demo",
+    "userName": "Demo User",
+    "rating": 5,
+    "comment": "Best CPU I've ever owned. Perfect for gaming and video editing.",
+    "createdAt": "2024-10-28T16:45:00Z"
+  },
+  {
+    "id": "r_4",
+    "productId": "p_ram_1",
+    "userId": "u_tech",
+    "userName": "TechEnthusiast",
+    "rating": 5,
+    "comment": "DDR5 is the future! The RGB looks amazing in my build.",
+    "createdAt": "2024-11-05T14:20:00Z"
+  },
+  {
+    "id": "r_5",
+    "productId": "p_storage_1",
+    "userId": "u_speed",
+    "userName": "SpeedDemon",
+    "rating": 5,
+    "comment": "Insanely fast! Games load in seconds. Highly recommend.",
+    "createdAt": "2024-11-10T11:00:00Z"
+  }
+]

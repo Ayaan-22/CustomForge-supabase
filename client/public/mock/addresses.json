@@ -1,0 +1,23 @@
+[
+  {
+    "id": "addr_demo_1",
+    "userId": "u_demo",
+    "line1": "123 Gaming Street",
+    "line2": "Apt 4B",
+    "city": "Tech City",
+    "state": "California",
+    "postalCode": "90210",
+    "country": "USA",
+    "isDefault": true
+  },
+  {
+    "id": "addr_demo_2",
+    "userId": "u_demo",
+    "line1": "456 PC Builder Lane",
+    "city": "Silicon Valley",
+    "state": "California",
+    "postalCode": "94025",
+    "country": "USA",
+    "isDefault": false
+  }
+]

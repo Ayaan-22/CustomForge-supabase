@@ -1,0 +1,26 @@
+[
+  {
+    "id": "ord_demo_1",
+    "userId": "u_demo",
+    "items": [
+      { "productId": "p_gpu_1", "name": "CustomForge Shadow RTX 4070", "price": 49410, "quantity": 1 },
+      { "productId": "p_ram_1", "name": "CustomForge Blaze DDR5 32GB", "price": 10965, "quantity": 2 }
+    ],
+    "status": "delivered",
+    "subtotal": 71340,
+    "discount": 0,
+    "total": 71340,
+    "createdAt": "2024-10-15T14:30:00Z",
+    "updatedAt": "2024-10-20T10:00:00Z"
+  },
+  {
+    "id": "ord_demo_2",
+    "userId": "u_demo",
+    "items": [{ "productId": "p_storage_1", "name": "CustomForge Vortex NVMe 2TB", "price": 14320, "quantity": 1 }],
+    "status": "shipped",
+    "subtotal": 14320,
+    "discount": 1432,
+    "total": 12888,
+    "createdAt": "2024-11-20T09:15:00Z"
+  }
+]
