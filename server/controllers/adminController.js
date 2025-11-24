@@ -1499,6 +1499,10 @@ export const getOrders = asyncHandler(async (req, res, next) => {
     query: req.query,
   });
 
+  let query = supabase
+    .from("orders")
+    .select("*, items:order_items (*)", { count: "exact" });
+
   // STATUS
   if (status) query = query.eq("status", status);
 
@@ -1512,10 +1516,12 @@ export const getOrders = asyncHandler(async (req, res, next) => {
   if (maxTotal) query = query.lte("total_price", Number(maxTotal));
 
   // DATE RANGE
-  if (createdFrom) query = query.gte("created_at", new Date(createdFrom).toISOString());
-  if (createdTo) query = query.lte("created_at", new Date(createdTo).toISOString());
+  if (createdFrom)
+    query = query.gte("created_at", new Date(createdFrom).toISOString());
+  if (createdTo)
+    query = query.lte("created_at", new Date(createdTo).toISOString());
 
-  // ORDERS with OR without items
+  // ORDERS must contain items
   if (hasItems === "true") query = query.not("items", "is", null);
 
   const validSort = ["created_at", "total_price", "status", "updated_at"];
