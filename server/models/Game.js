@@ -21,14 +21,10 @@ const mapGameRow = (row) => {
     languages: row.languages,
     edition: row.edition,
     metacriticScore:
-      row.metacritic_score != null
-        ? Number(row.metacritic_score)
-        : null,
+      row.metacritic_score != null ? Number(row.metacritic_score) : null,
     features: row.features,
     ratingsAverage:
-      row.ratings_average != null
-        ? Number(row.ratings_average)
-        : 0,
+      row.ratings_average != null ? Number(row.ratings_average) : 0,
     ratingsTotalReviews: row.ratings_total_reviews ?? 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

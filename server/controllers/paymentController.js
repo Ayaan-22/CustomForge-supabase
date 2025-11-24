@@ -59,10 +59,7 @@ function validatePaymentAuthorization(order, userId, userRole) {
   const requestUserId = String(userId);
 
   if (orderUserId !== requestUserId && userRole !== "admin") {
-    throw new AppError(
-      "Not authorized to process payment for this order",
-      403
-    );
+    throw new AppError("Not authorized to process payment for this order", 403);
   }
 }
 
@@ -261,10 +258,7 @@ export const processPayment = asyncHandler(async (req, res, next) => {
     }
 
     if (order.status === "cancelled" || order.status === "refunded") {
-      throw new AppError(
-        "Cannot pay for cancelled or refunded order",
-        400
-      );
+      throw new AppError("Cannot pay for cancelled or refunded order", 400);
     }
 
     // Process payment based on method
@@ -297,11 +291,7 @@ export const processPayment = asyncHandler(async (req, res, next) => {
     const nowIso = new Date().toISOString();
     const isPaid = paymentResult.status === "succeeded";
     const status =
-      paymentMethod === "cod"
-        ? "processing"
-        : isPaid
-        ? "paid"
-        : order.status;
+      paymentMethod === "cod" ? "processing" : isPaid ? "paid" : order.status;
 
     const { data: updatedOrder, error: updateError } = await supabase
       .from("orders")
@@ -353,155 +343,153 @@ export const processPayment = asyncHandler(async (req, res, next) => {
  * @access  Private
  * @body    { orderId }
  */
-export const createPaymentIntent = asyncHandler(
-  async (req, res, next) => {
-    const { orderId } = req.body;
+export const createPaymentIntent = asyncHandler(async (req, res, next) => {
+  const { orderId } = req.body;
 
-    if (!orderId || !isValidUUID(orderId)) {
-      throw new AppError("Valid order ID is required", 400);
-    }
+  if (!orderId || !isValidUUID(orderId)) {
+    throw new AppError("Valid order ID is required", 400);
+  }
 
-    // Load order
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("id", orderId)
+  // Load order
+  const { data: order, error: orderError } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (orderError) {
+    logger.error("Order lookup failed in createPaymentIntent", {
+      error: orderError.message,
+      orderId,
+    });
+    throw new AppError("Failed to fetch order", 500);
+  }
+
+  if (!order) {
+    throw new AppError("Order not found", 404);
+  }
+
+  // Authorization check
+  validatePaymentAuthorization(order, req.user.id, req.user.role);
+
+  if (order.is_paid) {
+    throw new AppError("Order is already paid", 400);
+  }
+
+  if (order.status === "cancelled" || order.status === "refunded") {
+    throw new AppError(
+      "Cannot create payment for cancelled or refunded order",
+      400
+    );
+  }
+
+  // Validate order amount
+  const total = Number(order.total_price);
+  if (total <= 0 || total > PAYMENT_CONFIG.MAX_PAYMENT_AMOUNT) {
+    throw new AppError("Invalid order amount", 400);
+  }
+
+  try {
+    // Fetch user from DB to get Stripe customer id
+    const { data: userRow, error: userError } = await supabase
+      .from("users")
+      .select("id, email, name, stripe_customer_id")
+      .eq("id", req.user.id)
       .maybeSingle();
 
-    if (orderError) {
-      logger.error("Order lookup failed in createPaymentIntent", {
-        error: orderError.message,
-        orderId,
+    if (userError || !userRow) {
+      logger.error("User lookup failed in createPaymentIntent", {
+        error: userError?.message,
+        userId: req.user.id,
       });
-      throw new AppError("Failed to fetch order", 500);
+      throw new AppError("Failed to load user for payment", 500);
     }
 
-    if (!order) {
-      throw new AppError("Order not found", 404);
-    }
+    let customerId = userRow.stripe_customer_id;
 
-    // Authorization check
-    validatePaymentAuthorization(order, req.user.id, req.user.role);
+    // Create Stripe customer if needed
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: userRow.email,
+        name: userRow.name,
+        metadata: sanitizeMetadata({
+          userId: String(userRow.id),
+        }),
+      });
+      customerId = customer.id;
 
-    if (order.is_paid) {
-      throw new AppError("Order is already paid", 400);
-    }
-
-    if (order.status === "cancelled" || order.status === "refunded") {
-      throw new AppError(
-        "Cannot create payment for cancelled or refunded order",
-        400
-      );
-    }
-
-    // Validate order amount
-    const total = Number(order.total_price);
-    if (total <= 0 || total > PAYMENT_CONFIG.MAX_PAYMENT_AMOUNT) {
-      throw new AppError("Invalid order amount", 400);
-    }
-
-    try {
-      // Fetch user from DB to get Stripe customer id
-      const { data: userRow, error: userError } = await supabase
+      // Save customer ID to user in Supabase
+      const { error: updateUserError } = await supabase
         .from("users")
-        .select("id, email, name, stripe_customer_id")
-        .eq("id", req.user.id)
-        .maybeSingle();
+        .update({ stripe_customer_id: customerId })
+        .eq("id", userRow.id);
 
-      if (userError || !userRow) {
-        logger.error("User lookup failed in createPaymentIntent", {
-          error: userError?.message,
-          userId: req.user.id,
+      if (updateUserError) {
+        logger.error("Failed to save Stripe customer ID", {
+          error: updateUserError.message,
+          userId: userRow.id,
         });
-        throw new AppError("Failed to load user for payment", 500);
       }
-
-      let customerId = userRow.stripe_customer_id;
-
-      // Create Stripe customer if needed
-      if (!customerId) {
-        const customer = await stripe.customers.create({
-          email: userRow.email,
-          name: userRow.name,
-          metadata: sanitizeMetadata({
-            userId: String(userRow.id),
-          }),
-        });
-        customerId = customer.id;
-
-        // Save customer ID to user in Supabase
-        const { error: updateUserError } = await supabase
-          .from("users")
-          .update({ stripe_customer_id: customerId })
-          .eq("id", userRow.id);
-
-        if (updateUserError) {
-          logger.error("Failed to save Stripe customer ID", {
-            error: updateUserError.message,
-            userId: userRow.id,
-          });
-        }
-      }
-
-      // Sanitize all metadata
-      const metadata = sanitizeMetadata({
-        orderId: String(order.id),
-        orderNumber: order.order_number || "",
-        userId: String(userRow.id),
-        userEmail: userRow.email || "",
-      });
-
-      // Build shipping object if shipping_address present
-      let shipping;
-      const addr = order.shipping_address;
-      if (addr) {
-        shipping = {
-          name: String(addr.fullName || "").slice(0, 100),
-          address: {
-            line1: String(addr.address || "").slice(0, 200),
-            city: String(addr.city || "").slice(0, 100),
-            state: String(addr.state || "").slice(0, 100),
-            postal_code: String(addr.postalCode || "").slice(0, 20),
-            country: String(addr.country || "US").slice(0, 2),
-          },
-          phone: addr.phone ? String(addr.phone).slice(0, 20) : undefined,
-        };
-      }
-
-      // Create payment intent
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(total * 100),
-        currency: PAYMENT_CONFIG.CURRENCY,
-        customer: customerId,
-        metadata,
-        description: `Payment for Order #${order.order_number || order.id}`,
-        shipping,
-        receipt_email: userRow.email,
-      });
-
-      logger.info("Payment intent created", {
-        orderId: order.id,
-        paymentIntentId: paymentIntent.id,
-        amount: total,
-      });
-
-      res.status(200).json({
-        success: true,
-        clientSecret: paymentIntent.client_secret,
-        paymentIntentId: paymentIntent.id,
-      });
-    } catch (error) {
-      logger.error("Payment intent creation failed", {
-        orderId: order.id,
-        error: error.message,
-      });
-      throw new AppError(
-        `Failed to create payment intent: ${error.message}`,
-        500
-      );
     }
+
+    // Sanitize all metadata
+    const metadata = sanitizeMetadata({
+      orderId: String(order.id),
+      orderNumber: order.order_number || "",
+      userId: String(userRow.id),
+      userEmail: userRow.email || "",
+    });
+
+    // Build shipping object if shipping_address present
+    let shipping;
+    const addr = order.shipping_address;
+    if (addr) {
+      shipping = {
+        name: String(addr.fullName || "").slice(0, 100),
+        address: {
+          line1: String(addr.address || "").slice(0, 200),
+          city: String(addr.city || "").slice(0, 100),
+          state: String(addr.state || "").slice(0, 100),
+          postal_code: String(addr.postalCode || "").slice(0, 20),
+          country: String(addr.country || "US").slice(0, 2),
+        },
+        phone: addr.phone ? String(addr.phone).slice(0, 20) : undefined,
+      };
+    }
+
+    // Create payment intent
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(total * 100),
+      currency: PAYMENT_CONFIG.CURRENCY,
+      customer: customerId,
+      metadata,
+      description: `Payment for Order #${order.order_number || order.id}`,
+      shipping,
+      receipt_email: userRow.email,
+    });
+
+    logger.info("Payment intent created", {
+      orderId: order.id,
+      paymentIntentId: paymentIntent.id,
+      amount: total,
+    });
+
+    res.status(200).json({
+      success: true,
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+    });
+  } catch (error) {
+    logger.error("Payment intent creation failed", {
+      orderId: order.id,
+      error: error.message,
+    });
+    throw new AppError(
+      `Failed to create payment intent: ${error.message}`,
+      500
+    );
   }
-);
+});
 
 /**
  * @desc    Stripe Webhook Handler with replay protection
@@ -851,17 +839,13 @@ export const processRefund = asyncHandler(async (req, res, next) => {
     }
 
     if (!order.payment_result || !order.payment_result.id) {
-      throw new AppError(
-        "Payment information not found for this order",
-        400
-      );
+      throw new AppError("Payment information not found for this order", 400);
     }
 
     const total = Number(order.total_price);
 
     // Determine refund amount
-    const refundAmount =
-      amount && amount > 0 ? Math.min(amount, total) : total;
+    const refundAmount = amount && amount > 0 ? Math.min(amount, total) : total;
 
     if (refundAmount <= 0) {
       throw new AppError("Invalid refund amount", 400);
@@ -884,10 +868,7 @@ export const processRefund = asyncHandler(async (req, res, next) => {
         orderId: order.id,
         error: stripeError.message,
       });
-      throw new AppError(
-        `Stripe refund failed: ${stripeError.message}`,
-        500
-      );
+      throw new AppError(`Stripe refund failed: ${stripeError.message}`, 500);
     }
 
     // Update order as refunded and (optionally) restock items
@@ -965,101 +946,88 @@ export const processRefund = asyncHandler(async (req, res, next) => {
  * @access  Private
  * @body    { paymentMethodId }
  */
-export const savePaymentMethod = asyncHandler(
-  async (req, res, next) => {
-    const { paymentMethodId } = req.body;
+export const savePaymentMethod = asyncHandler(async (req, res, next) => {
+  const { paymentMethodId } = req.body;
 
-    if (!paymentMethodId || typeof paymentMethodId !== "string") {
-      throw new AppError("Valid payment method ID is required", 400);
-    }
-
-    // Load user from DB to get Stripe customer ID & payment methods
-    const { data: userRow, error: userError } = await supabase
-      .from("users")
-      .select("id, email, name, stripe_customer_id, payment_methods")
-      .eq("id", req.user.id)
-      .maybeSingle();
-
-    if (userError || !userRow) {
-      logger.error("User lookup failed in savePaymentMethod", {
-        error: userError?.message,
-        userId: req.user.id,
-      });
-      throw new AppError("Failed to load user", 500);
-    }
-
-    if (!userRow.stripe_customer_id) {
-      throw new AppError(
-        "No Stripe customer associated with this account",
-        400
-      );
-    }
-
-    try {
-      // Attach payment method to customer
-      const paymentMethod = await stripe.paymentMethods.attach(
-        paymentMethodId,
-        {
-          customer: userRow.stripe_customer_id,
-        }
-      );
-
-      // Get customer details
-      const customer = await stripe.customers.retrieve(
-        userRow.stripe_customer_id
-      );
-
-      // Set as default if no default exists
-      if (!customer.invoice_settings?.default_payment_method) {
-        await stripe.customers.update(userRow.stripe_customer_id, {
-          invoice_settings: {
-            default_payment_method: paymentMethod.id,
-          },
-        });
-      }
-
-      // Save to user record (deduplicated array)
-      const current = Array.isArray(userRow.payment_methods)
-        ? userRow.payment_methods
-        : [];
-      const updated = Array.from(
-        new Set([...current, paymentMethod.id])
-      );
-
-      const { error: updateError } = await supabase
-        .from("users")
-        .update({ payment_methods: updated })
-        .eq("id", userRow.id);
-
-      if (updateError) {
-        logger.error("Failed to save payment method in DB", {
-          error: updateError.message,
-          userId: userRow.id,
-        });
-      }
-
-      logger.info("Payment method saved", {
-        userId: userRow.id,
-        paymentMethodId: paymentMethod.id,
-      });
-
-      res.status(200).json({
-        success: true,
-        message: "Payment method saved successfully",
-        data: paymentMethod,
-      });
-    } catch (error) {
-      logger.error("Save payment method failed", {
-        userId: userRow.id,
-        error: error.message,
-      });
-      throw new AppError(
-        `Failed to save payment method: ${error.message}`,
-        500
-      );
-    }
+  if (!paymentMethodId || typeof paymentMethodId !== "string") {
+    throw new AppError("Valid payment method ID is required", 400);
   }
-);
+
+  // Load user from DB to get Stripe customer ID & payment methods
+  const { data: userRow, error: userError } = await supabase
+    .from("users")
+    .select("id, email, name, stripe_customer_id, payment_methods")
+    .eq("id", req.user.id)
+    .maybeSingle();
+
+  if (userError || !userRow) {
+    logger.error("User lookup failed in savePaymentMethod", {
+      error: userError?.message,
+      userId: req.user.id,
+    });
+    throw new AppError("Failed to load user", 500);
+  }
+
+  if (!userRow.stripe_customer_id) {
+    throw new AppError("No Stripe customer associated with this account", 400);
+  }
+
+  try {
+    // Attach payment method to customer
+    const paymentMethod = await stripe.paymentMethods.attach(paymentMethodId, {
+      customer: userRow.stripe_customer_id,
+    });
+
+    // Get customer details
+    const customer = await stripe.customers.retrieve(
+      userRow.stripe_customer_id
+    );
+
+    // Set as default if no default exists
+    if (!customer.invoice_settings?.default_payment_method) {
+      await stripe.customers.update(userRow.stripe_customer_id, {
+        invoice_settings: {
+          default_payment_method: paymentMethod.id,
+        },
+      });
+    }
+
+    // Save to user record (deduplicated array)
+    const current = Array.isArray(userRow.payment_methods)
+      ? userRow.payment_methods
+      : [];
+    const updated = Array.from(new Set([...current, paymentMethod.id]));
+
+    const { error: updateError } = await supabase
+      .from("users")
+      .update({ payment_methods: updated })
+      .eq("id", userRow.id);
+
+    if (updateError) {
+      logger.error("Failed to save payment method in DB", {
+        error: updateError.message,
+        userId: userRow.id,
+      });
+    }
+
+    logger.info("Payment method saved", {
+      userId: userRow.id,
+      paymentMethodId: paymentMethod.id,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Payment method saved successfully",
+      data: paymentMethod,
+    });
+  } catch (error) {
+    logger.error("Save payment method failed", {
+      userId: userRow.id,
+      error: error.message,
+    });
+    throw new AppError(`Failed to save payment method: ${error.message}`, 500);
+  }
+});
 
 /**
  * @desc    Create Stripe Checkout Session

@@ -52,9 +52,7 @@ export const protect = asyncHandler(async (req, res, next) => {
     currentUser.passwordChangedAt &&
     decoded.iat * 1000 < new Date(currentUser.passwordChangedAt).getTime()
   ) {
-    return next(
-      new AppError("Password recently changed. Login again.", 401)
-    );
+    return next(new AppError("Password recently changed. Login again.", 401));
   }
 
   req.user = currentUser;
@@ -72,9 +70,7 @@ export const restrictTo = (...allowedRoles) => {
 
     if (!allowedRoles.includes(req.user.role)) {
       logger.warn("Unauthorized role access");
-      return next(
-        new AppError("You do not have permission.", 403)
-      );
+      return next(new AppError("You do not have permission.", 403));
     }
 
     next();
@@ -99,8 +95,7 @@ export const twoFactorAuth = asyncHandler(async (req, res, next) => {
     return next();
   }
 
-  const twoFactorToken =
-    req.headers["x-2fa-token"] || req.body.twoFactorToken;
+  const twoFactorToken = req.headers["x-2fa-token"] || req.body.twoFactorToken;
 
   if (!twoFactorToken) {
     return next(new AppError("2FA token required.", 401));

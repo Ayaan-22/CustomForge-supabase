@@ -6,7 +6,7 @@ import {
   getMyOrders,
   getPaymentStatus,
   cancelOrder,
-  requestReturn
+  requestReturn,
 } from "../controllers/orderController.js";
 import { protect } from "../middleware/authMiddleware.js";
 
@@ -20,23 +20,19 @@ router.use(protect);
  * POST /api/orders → convert cart → order (strict validation here)
  * GET  /api/orders → get user's order history
  */
-router.route("/")
-  .post(createOrder)
-  .get(getMyOrders);
+router.route("/").post(createOrder).get(getMyOrders);
 
 /**
  * ORDER DETAILS
  * GET /api/orders/:id → fetch specific order
  */
-router.route("/:id")
-  .get(getOrderById);
+router.route("/:id").get(getOrderById);
 
 /**
  * PAYMENT STATUS POLLING
  * GET /api/orders/:id/payment-status
  */
-router.route("/:id/payment-status")
-  .get(getPaymentStatus);
+router.route("/:id/payment-status").get(getPaymentStatus);
 
 /**
  * ORDER CANCELLATION

@@ -17,9 +17,7 @@ import {
   comparePassword,
 } from "../models/User.js";
 
-import {
-  getUserOrders as fetchUserOrders,
-} from "../models/Order.js";
+import { getUserOrders as fetchUserOrders } from "../models/Order.js";
 
 import { supabase } from "../config/db.js";
 

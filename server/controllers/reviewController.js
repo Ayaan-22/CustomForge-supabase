@@ -3,10 +3,7 @@ import asyncHandler from "express-async-handler";
 import AppError from "../utils/appError.js";
 import { logger } from "../middleware/logger.js";
 import { supabase } from "../config/db.js";
-import {
-  updateReview,
-  softDeleteReview,
-} from "../models/Review.js";
+import { updateReview, softDeleteReview } from "../models/Review.js";
 import { recalcProductRatings } from "../models/Product.js";
 
 const isValidUUID = (value) =>
@@ -134,7 +131,11 @@ export const getProductReviews = asyncHandler(async (req, res, next) => {
   const from = (page - 1) * limit;
   const to = from + limit - 1;
 
-  const { data: reviews, error, count } = await supabase
+  const {
+    data: reviews,
+    error,
+    count,
+  } = await supabase
     .from("reviews")
     .select(
       `
@@ -184,6 +185,8 @@ export const getProductReviews = asyncHandler(async (req, res, next) => {
     data: mappedReviews,
   });
 
-  logger.info("Fetched product reviews", { productId, count: mappedReviews.length });
+  logger.info("Fetched product reviews", {
+    productId,
+    count: mappedReviews.length,
+  });
 });
-

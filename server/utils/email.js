@@ -16,7 +16,7 @@ export default class Email {
     this.to = user.email;
     this.firstName = user.name?.split(" ")[0] || "User";
     this.url = url;
-    this.from = process.env.EMAIL_USERNAME 
+    this.from = process.env.EMAIL_USERNAME
       ? `Ayaan from GameShop <${process.env.EMAIL_USERNAME}>`
       : process.env.EMAIL_FROM || "noreply@gameshop.com";
     this.data = data;
@@ -31,10 +31,13 @@ export default class Email {
 
     // In development, allow email to be optional (log instead of sending)
     if (NODE_ENV === "development" && (!EMAIL_USERNAME || !EMAIL_PASSWORD)) {
-      logger.warn("Email not configured - emails will not be sent in development", {
-        hasUsername: !!EMAIL_USERNAME,
-        hasPassword: !!EMAIL_PASSWORD,
-      });
+      logger.warn(
+        "Email not configured - emails will not be sent in development",
+        {
+          hasUsername: !!EMAIL_USERNAME,
+          hasPassword: !!EMAIL_PASSWORD,
+        }
+      );
       // Return a mock transport that logs instead of sending
       return {
         sendMail: async (options) => {
@@ -100,11 +103,9 @@ export default class Email {
       // Check if template file exists
       if (!fs.existsSync(templatePath)) {
         logger.error("Email template not found", { templatePath, template });
-        throw new AppError(
-          `Email template '${template}' not found`,
-          500,
-          { templatePath }
-        );
+        throw new AppError(`Email template '${template}' not found`, 500, {
+          templatePath,
+        });
       }
 
       // Render HTML based on pug template
@@ -143,7 +144,7 @@ export default class Email {
 
       // Create transport and send
       const transport = this.newTransport();
-      
+
       try {
         await transport.sendMail(mailOptions);
       } catch (sendError) {
@@ -154,19 +155,22 @@ export default class Email {
           response: sendError.response,
           to: this.to,
         });
-        
+
         // Provide more specific error messages
         let errorMessage = "Failed to send email";
         if (sendError.code === "EAUTH") {
-          errorMessage = "Email authentication failed. Please check EMAIL_USERNAME and EMAIL_PASSWORD.";
+          errorMessage =
+            "Email authentication failed. Please check EMAIL_USERNAME and EMAIL_PASSWORD.";
         } else if (sendError.code === "ECONNECTION") {
-          errorMessage = `Cannot connect to email server (${process.env.EMAIL_HOST || "smtp.gmail.com"})`;
+          errorMessage = `Cannot connect to email server (${
+            process.env.EMAIL_HOST || "smtp.gmail.com"
+          })`;
         } else if (sendError.code === "ETIMEDOUT") {
           errorMessage = "Email server connection timed out";
         } else if (sendError.response) {
           errorMessage = `Email server error: ${sendError.response}`;
         }
-        
+
         throw new AppError(errorMessage, 500, {
           template,
           recipient: this.to,
@@ -185,7 +189,7 @@ export default class Email {
       if (err instanceof AppError) {
         throw err;
       }
-      
+
       // Wrap other errors
       logger.error("Email send failed (unexpected error)", {
         message: err.message,
@@ -194,15 +198,11 @@ export default class Email {
         subject,
         template,
       });
-      throw new AppError(
-        `Error sending email: ${err.message}`,
-        500,
-        {
-          template,
-          recipient: this.to,
-          originalError: err.message,
-        }
-      );
+      throw new AppError(`Error sending email: ${err.message}`, 500, {
+        template,
+        recipient: this.to,
+        originalError: err.message,
+      });
     }
   }
 

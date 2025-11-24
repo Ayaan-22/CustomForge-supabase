@@ -13,25 +13,35 @@ const LOG_DIR = process.env.LOG_DIR || path.join(__dirname, "../../logs");
 
 // Utility functions
 const getFormattedDate = (date = new Date()) => {
-  return date.toISOString().split('T')[0];
+  return date.toISOString().split("T")[0];
 };
 
 const isValidLogFile = (filename) => {
-  return filename.match(/^(application|error|exceptions|rejections)-\d{4}-\d{2}-\d{2}\.log$/);
+  return filename.match(
+    /^(application|error|exceptions|rejections)-\d{4}-\d{2}-\d{2}\.log$/
+  );
 };
 
 const sanitizeLogEntry = (logEntry) => {
-  if (!logEntry || typeof logEntry !== 'object') return logEntry;
-  
+  if (!logEntry || typeof logEntry !== "object") return logEntry;
+
   // Remove sensitive fields
-  const { body, userAgent, ip, password, authorization, cookie, ...sanitizedEntry } = logEntry;
-  
+  const {
+    body,
+    userAgent,
+    ip,
+    password,
+    authorization,
+    cookie,
+    ...sanitizedEntry
+  } = logEntry;
+
   // Mask any potential sensitive data in nested objects
-  if (sanitizedEntry.meta && typeof sanitizedEntry.meta === 'object') {
+  if (sanitizedEntry.meta && typeof sanitizedEntry.meta === "object") {
     const { body: metaBody, headers, ...sanitizedMeta } = sanitizedEntry.meta;
     sanitizedEntry.meta = sanitizedMeta;
   }
-  
+
   return sanitizedEntry;
 };
 
@@ -41,7 +51,7 @@ const readLogFileStream = async (filePath, options = {}) => {
     offset = 0,
     level = null,
     userId = null,
-    search = null
+    search = null,
   } = options;
 
   return new Promise((resolve, reject) => {
@@ -49,56 +59,62 @@ const readLogFileStream = async (filePath, options = {}) => {
     let currentLine = 0;
     let processedCount = 0;
 
-    const fileStream = fs.createReadStream(filePath, { encoding: 'utf8' });
-    
+    const fileStream = fs.createReadStream(filePath, { encoding: "utf8" });
+
     const rl = readline.createInterface({
       input: fileStream,
-      crlfDelay: Infinity
+      crlfDelay: Infinity,
     });
 
-    rl.on('line', (line) => {
+    rl.on("line", (line) => {
       currentLine++;
-      
+
       // Skip lines until we reach the offset (for pagination)
       if (currentLine <= offset) return;
 
       if (line.trim()) {
         try {
           const logEntry = JSON.parse(line);
-          
+
           // Apply filters
           if (level && logEntry.level !== level) return;
           if (userId && logEntry.userId !== userId) return;
-          if (search && !JSON.stringify(logEntry).toLowerCase().includes(search.toLowerCase())) return;
-          
+          if (
+            search &&
+            !JSON.stringify(logEntry)
+              .toLowerCase()
+              .includes(search.toLowerCase())
+          )
+            return;
+
           // Sanitize before storing
           logs.push(sanitizeLogEntry(logEntry));
           processedCount++;
-          
+
           // Stop if we've reached the limit
           if (processedCount >= limit) {
             rl.close();
           }
         } catch (e) {
           // Skip malformed JSON lines but log the error
-          logger.warn('Failed to parse log line', { 
-            line: currentLine, 
+          logger.warn("Failed to parse log line", {
+            line: currentLine,
             error: e.message,
-            file: path.basename(filePath)
+            file: path.basename(filePath),
           });
         }
       }
     });
 
-    rl.on('close', () => {
+    rl.on("close", () => {
       resolve(logs.reverse()); // Return latest first
     });
 
-    rl.on('error', (err) => {
+    rl.on("error", (err) => {
       reject(err);
     });
 
-    fileStream.on('error', (err) => {
+    fileStream.on("error", (err) => {
       reject(err);
     });
   });
@@ -117,7 +133,7 @@ export const getAllLogs = async (req, res, next) => {
       level,
       userId,
       search,
-      date = getFormattedDate()
+      date = getFormattedDate(),
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page));
@@ -140,7 +156,7 @@ export const getAllLogs = async (req, res, next) => {
       offset,
       level,
       userId,
-      search
+      search,
     });
 
     // Get total count for pagination metadata (without reading all lines)
@@ -149,11 +165,11 @@ export const getAllLogs = async (req, res, next) => {
       const fileStream = fs.createReadStream(logFile);
       const rl = readline.createInterface({
         input: fileStream,
-        crlfDelay: Infinity
+        crlfDelay: Infinity,
       });
 
-      rl.on('line', () => count++);
-      rl.on('close', () => resolve(count));
+      rl.on("line", () => count++);
+      rl.on("close", () => resolve(count));
     });
 
     res.status(200).json({
@@ -162,13 +178,13 @@ export const getAllLogs = async (req, res, next) => {
         page: pageNum,
         limit: limitNum,
         total: totalLines,
-        pages: Math.ceil(totalLines / limitNum)
+        pages: Math.ceil(totalLines / limitNum),
       },
       filters: {
         level,
         userId,
         search,
-        date
+        date,
       },
       results: logs.length,
       data: logs,
@@ -196,12 +212,12 @@ export const getLogById = async (req, res, next) => {
       const fileStream = fs.createReadStream(logFile);
       const rl = readline.createInterface({
         input: fileStream,
-        crlfDelay: Infinity
+        crlfDelay: Infinity,
       });
 
       let foundEntry = null;
 
-      rl.on('line', (line) => {
+      rl.on("line", (line) => {
         if (line.trim()) {
           try {
             const entry = JSON.parse(line);
@@ -215,17 +231,22 @@ export const getLogById = async (req, res, next) => {
         }
       });
 
-      rl.on('close', () => {
+      rl.on("close", () => {
         resolve(foundEntry);
       });
 
-      rl.on('error', (err) => {
+      rl.on("error", (err) => {
         reject(err);
       });
     });
 
     if (!logEntry) {
-      return next(new AppError(`Log with ID ${req.params.id} not found for date ${date}`, 404));
+      return next(
+        new AppError(
+          `Log with ID ${req.params.id} not found for date ${date}`,
+          404
+        )
+      );
     }
 
     res.status(200).json({
@@ -253,8 +274,8 @@ export const getAvailableLogDates = async (req, res, next) => {
 
     const files = fs.readdirSync(LOG_DIR);
     const logDates = files
-      .filter(file => isValidLogFile(file))
-      .map(file => file.match(/\d{4}-\d{2}-\d{2}/)?.[0])
+      .filter((file) => isValidLogFile(file))
+      .map((file) => file.match(/\d{4}-\d{2}-\d{2}/)?.[0])
       .filter(Boolean)
       .sort()
       .reverse(); // Most recent first
@@ -290,7 +311,7 @@ export const getLogStats = async (req, res, next) => {
         byRoute: {},
         errorCount: 0,
         averageResponseTime: 0,
-        uniqueUsers: new Set()
+        uniqueUsers: new Set(),
       };
 
       let totalResponseTime = 0;
@@ -299,55 +320,56 @@ export const getLogStats = async (req, res, next) => {
       const fileStream = fs.createReadStream(logFile);
       const rl = readline.createInterface({
         input: fileStream,
-        crlfDelay: Infinity
+        crlfDelay: Infinity,
       });
 
-      rl.on('line', (line) => {
+      rl.on("line", (line) => {
         if (line.trim()) {
           try {
             const entry = JSON.parse(line);
             statistics.total++;
-            
+
             // Count by level
-            statistics.byLevel[entry.level] = (statistics.byLevel[entry.level] || 0) + 1;
-            
+            statistics.byLevel[entry.level] =
+              (statistics.byLevel[entry.level] || 0) + 1;
+
             // Count by route
             if (entry.route) {
-              const route = entry.route.split('?')[0]; // Remove query params
+              const route = entry.route.split("?")[0]; // Remove query params
               statistics.byRoute[route] = (statistics.byRoute[route] || 0) + 1;
             }
-            
+
             // Error count
-            if (entry.level === 'error') {
+            if (entry.level === "error") {
               statistics.errorCount++;
             }
-            
+
             // Response time stats
             if (entry.responseTime) {
               totalResponseTime += entry.responseTime;
               responseTimeCount++;
             }
-            
+
             // Unique users
-            if (entry.userId && entry.userId !== 'anonymous') {
+            if (entry.userId && entry.userId !== "anonymous") {
               statistics.uniqueUsers.add(entry.userId);
             }
-            
           } catch (e) {
             // Skip malformed lines
           }
         }
       });
 
-      rl.on('close', () => {
+      rl.on("close", () => {
         statistics.uniqueUsers = statistics.uniqueUsers.size;
-        statistics.averageResponseTime = responseTimeCount > 0 
-          ? Math.round(totalResponseTime / responseTimeCount) 
-          : 0;
+        statistics.averageResponseTime =
+          responseTimeCount > 0
+            ? Math.round(totalResponseTime / responseTimeCount)
+            : 0;
         resolve(statistics);
       });
 
-      rl.on('error', (err) => {
+      rl.on("error", (err) => {
         reject(err);
       });
     });

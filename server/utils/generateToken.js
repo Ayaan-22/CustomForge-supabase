@@ -20,9 +20,7 @@ const JWT_CONFIG = {
   expiresIn: process.env.JWT_EXPIRES_IN || "30d",
   shortExpires: process.env.JWT_SHORT_EXPIRES_IN || "15m",
   refreshExpires:
-    process.env.JWT_REFRESH_EXPIRES_IN ||
-    process.env.JWT_EXPIRES_IN ||
-    "30d",
+    process.env.JWT_REFRESH_EXPIRES_IN || process.env.JWT_EXPIRES_IN || "30d",
 };
 
 const TOKEN_EXPIRY = {
@@ -89,12 +87,14 @@ export const verifyTokenAndFindUser = async (
   const now = new Date().toISOString();
 
   // Map camelCase to snake_case for database fields
-  const dbTokenField = tokenField === "emailVerificationToken" 
-    ? "email_verification_token"
-    : "password_reset_token";
-  const dbExpiresField = expiresField === "emailVerificationExpires"
-    ? "email_verification_expires"
-    : "password_reset_expires";
+  const dbTokenField =
+    tokenField === "emailVerificationToken"
+      ? "email_verification_token"
+      : "password_reset_token";
+  const dbExpiresField =
+    expiresField === "emailVerificationExpires"
+      ? "email_verification_expires"
+      : "password_reset_expires";
 
   // First find user by token
   const { data: user, error } = await supabase
@@ -211,23 +211,23 @@ export const generateTokenPair = (userId, role) => {
 // User Model Helpers
 export const assignEmailVerificationToUser = async (userId) => {
   const { token, hashedToken, expires } = generateEmailVerificationToken();
-  
+
   await updateUser(userId, {
     emailVerificationToken: hashedToken,
     emailVerificationExpires: new Date(expires).toISOString(),
   });
-  
+
   return token;
 };
 
 export const assignPasswordResetToUser = async (userId) => {
   const { token, hashedToken, expires } = generatePasswordResetToken();
-  
+
   await updateUser(userId, {
     passwordResetToken: hashedToken,
     passwordResetExpires: new Date(expires).toISOString(),
   });
-  
+
   return token;
 };
 

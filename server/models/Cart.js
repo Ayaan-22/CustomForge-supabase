@@ -143,22 +143,17 @@ export const addCartItem = async (userId, productId, quantity) => {
   const qty = Number(quantity) || 1;
 
   if (!existing) {
-    const { error: insertError } = await supabase
-      .from("cart_items")
-      .insert([
-        {
-          cart_id: cart.id,
-          product_id: productId,
-          quantity: qty,
-        },
-      ]);
+    const { error: insertError } = await supabase.from("cart_items").insert([
+      {
+        cart_id: cart.id,
+        product_id: productId,
+        quantity: qty,
+      },
+    ]);
 
     if (insertError) throw new Error(insertError.message);
   } else {
-    const newQty = Math.min(
-      CART_CONFIG.MAX_QUANTITY,
-      existing.quantity + qty
-    );
+    const newQty = Math.min(CART_CONFIG.MAX_QUANTITY, existing.quantity + qty);
 
     const { error: updateError } = await supabase
       .from("cart_items")
@@ -174,11 +169,7 @@ export const addCartItem = async (userId, productId, quantity) => {
 /**
  * Update cart item quantity
  */
-export const updateCartItem = async (
-  userId,
-  productId,
-  quantity
-) => {
+export const updateCartItem = async (userId, productId, quantity) => {
   const cart = await getOrCreateCart(userId);
 
   const { data: existing, error } = await supabase

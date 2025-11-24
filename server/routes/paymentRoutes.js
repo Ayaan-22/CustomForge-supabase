@@ -20,41 +20,33 @@ router.use(protect);
 /**
  * PROCESS PAYMENT (STRIPE / PAYPAL / COD)
  */
-router.route("/process")
-  .post(processPayment);
+router.route("/process").post(processPayment);
 
 /**
  * STRIPE CLIENT-SECRET FLOW
  */
-router.route("/create-intent")
-  .post(createPaymentIntent);
+router.route("/create-intent").post(createPaymentIntent);
 
 /**
  * STRIPE CHECKOUT SESSION
  */
-router.route("/create-stripe-session")
-  .post(createStripeSession);
+router.route("/create-stripe-session").post(createStripeSession);
 
 /**
  * COD ORDER
  */
-router.route("/create-order-cod")
-  .post(createOrderCod);
+router.route("/create-order-cod").post(createOrderCod);
 
 /**
  * PAYPAL ORDER FLOW
  */
-router.route("/paypal/create-order")
-  .post(createPayPalOrder);
+router.route("/paypal/create-order").post(createPayPalOrder);
 
-router.route("/paypal/capture-order")
-  .post(capturePayPalOrder);
+router.route("/paypal/capture-order").post(capturePayPalOrder);
 
 /**
  * USER PAYMENT METHODS (STRIPE STORED CARDS)
  */
-router.route("/payment-methods")
-  .get(getPaymentMethods)
-  .post(savePaymentMethod);
+router.route("/payment-methods").get(getPaymentMethods).post(savePaymentMethod);
 
 export default router;

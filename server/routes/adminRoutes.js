@@ -1,6 +1,6 @@
 // File: server/routes/adminRoutes.js
 
-import express from 'express';
+import express from "express";
 import {
   // Analytics & Dashboard
   getSalesAnalytics,
@@ -54,14 +54,14 @@ import {
   protect,
   verifiedEmail,
   twoFactorAuth,
-  restrictTo
+  restrictTo,
 } from "../middleware/authMiddleware.js";
 
 import {
   getAllLogs,
   getLogById,
   getAvailableLogDates,
-  getLogStats
+  getLogStats,
 } from "../controllers/logController.js";
 import { getOrderById } from "../controllers/orderController.js";
 
@@ -141,10 +141,7 @@ router.put("/orders/:id/process-return", processReturn);
 /* ============================================================================
    COUPON MANAGEMENT ROUTES
    ========================================================================== */
-router
-  .route("/coupons")
-  .post(createCoupon)
-  .get(getCoupons);
+router.route("/coupons").post(createCoupon).get(getCoupons);
 
 router
   .route("/coupons/:id")

@@ -18,4 +18,3 @@ router.patch("/:reviewId", updateReviewController);
 router.delete("/:reviewId", deleteReviewController);
 
 export default router;
-

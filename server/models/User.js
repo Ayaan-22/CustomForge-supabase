@@ -54,11 +54,9 @@ export const createUser = async (payload) => {
     address: payload.address ?? null,
     is_email_verified: payload.isEmailVerified ?? false,
     email_verification_token: payload.emailVerificationToken ?? null,
-    email_verification_expires:
-      payload.emailVerificationExpires ?? null,
+    email_verification_expires: payload.emailVerificationExpires ?? null,
     password_reset_token: payload.passwordResetToken ?? null,
-    password_reset_expires:
-      payload.passwordResetExpires ?? null,
+    password_reset_expires: payload.passwordResetExpires ?? null,
     password_changed_at: payload.passwordChangedAt ?? null,
     two_factor_enabled: payload.twoFactorEnabled ?? false,
     two_factor_secret: payload.twoFactorSecret ?? null,
@@ -75,12 +73,13 @@ export const createUser = async (payload) => {
   return mapUserRow(data);
 };
 
-
 export const findUserByEmail = async (email, options = {}) => {
   const { includePassword = false } = options;
-  
+
   // Select all fields - will include optional columns if they exist
-  const selectFields = includePassword ? "*" : "id, name, email, role, avatar, phone, address, is_email_verified, email_verification_token, email_verification_expires, password_reset_token, password_reset_expires, password_changed_at, two_factor_enabled, two_factor_secret, active, created_at, updated_at";
+  const selectFields = includePassword
+    ? "*"
+    : "id, name, email, role, avatar, phone, address, is_email_verified, email_verification_token, email_verification_expires, password_reset_token, password_reset_expires, password_changed_at, two_factor_enabled, two_factor_secret, active, created_at, updated_at";
 
   const { data, error } = await supabase
     .from("users")
@@ -95,9 +94,11 @@ export const findUserByEmail = async (email, options = {}) => {
 
 export const findUserById = async (id, options = {}) => {
   const { includePassword = false } = options;
-  
+
   // Select all fields - will include optional columns if they exist
-  const selectFields = includePassword ? "*" : "id, name, email, role, avatar, phone, address, is_email_verified, email_verification_token, email_verification_expires, password_reset_token, password_reset_expires, password_changed_at, two_factor_enabled, two_factor_secret, active, created_at, updated_at";
+  const selectFields = includePassword
+    ? "*"
+    : "id, name, email, role, avatar, phone, address, is_email_verified, email_verification_token, email_verification_expires, password_reset_token, password_reset_expires, password_changed_at, two_factor_enabled, two_factor_secret, active, created_at, updated_at";
 
   const { data, error } = await supabase
     .from("users")

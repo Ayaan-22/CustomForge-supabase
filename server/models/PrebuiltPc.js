@@ -120,10 +120,7 @@ export const updatePrebuiltPc = async (id, updates) => {
 };
 
 export const deletePrebuiltPc = async (id) => {
-  const { error } = await supabase
-    .from("prebuilt_pcs")
-    .delete()
-    .eq("id", id);
+  const { error } = await supabase.from("prebuilt_pcs").delete().eq("id", id);
 
   if (error) throw new Error(error.message);
   return true;

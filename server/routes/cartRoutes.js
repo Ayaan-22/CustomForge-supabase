@@ -7,7 +7,7 @@ import {
   removeFromCart,
   clearCart,
   applyCoupon,
-  removeCoupon
+  removeCoupon,
 } from "../controllers/cartController.js";
 import { protect } from "../middleware/authMiddleware.js";
 
@@ -31,9 +31,7 @@ router.delete("/", clearCart);
  * POST   /api/cart/coupon → apply coupon to cart (preview only)
  * DELETE /api/cart/coupon → remove coupon from cart
  */
-router.route("/coupon")
-.post(applyCoupon)
-.delete(removeCoupon);
+router.route("/coupon").post(applyCoupon).delete(removeCoupon);
 
 /**
  * ITEM-LEVEL OPERATIONS

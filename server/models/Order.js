@@ -21,10 +21,7 @@ export const getOrderById = async (id) => {
   return data || null;
 };
 
-export const getUserOrders = async (
-  userId,
-  { page = 1, limit = 10 } = {}
-) => {
+export const getUserOrders = async (userId, { page = 1, limit = 10 } = {}) => {
   const p = Math.max(parseInt(page, 10) || 1, 1);
   const l = Math.min(parseInt(limit, 10) || 10, 50);
   const from = (p - 1) * l;

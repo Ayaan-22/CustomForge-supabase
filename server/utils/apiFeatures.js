@@ -1,8 +1,7 @@
 // server/utils/apiFeatures.js
 
 // Helper: escape regex meta characters to avoid ReDoS
-const escapeRegex = (str = "") =>
-  str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeRegex = (str = "") => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 class APIFeatures {
   /**

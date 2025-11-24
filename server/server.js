@@ -59,11 +59,7 @@ app.use(
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", "'unsafe-inline'", process.env.CLIENT_URL],
-        styleSrc: [
-          "'self'",
-          "'unsafe-inline'",
-          "https://fonts.googleapis.com",
-        ],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],
         connectSrc: ["'self'", process.env.CLIENT_URL],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
@@ -211,4 +207,3 @@ process.on("SIGTERM", () => {
     logger.info("💥 Process terminated");
   });
 });
-

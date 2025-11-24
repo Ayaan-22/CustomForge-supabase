@@ -128,10 +128,7 @@ export const updateProduct = async (id, updates) => {
 };
 
 export const deleteProduct = async (id) => {
-  const { error } = await supabase
-    .from("products")
-    .delete()
-    .eq("id", id);
+  const { error } = await supabase.from("products").delete().eq("id", id);
 
   if (error) throw new Error(error.message);
   return true;
@@ -159,13 +156,10 @@ export const changeStock = async (productId, delta) => {
 };
 
 export const increaseSales = async (productId, qty) => {
-  const { data, error } = await supabase.rpc(
-    "increment_product_sales",
-    {
-      p_product_id: productId,
-      p_qty: qty,
-    }
-  );
+  const { data, error } = await supabase.rpc("increment_product_sales", {
+    p_product_id: productId,
+    p_qty: qty,
+  });
 
   if (error) throw new Error(error.message);
   const row = Array.isArray(data) ? data[0] : data;
@@ -189,10 +183,7 @@ export const recalcProductRatings = async (productId) => {
 
   let average = 0;
   if (totalReviews > 0) {
-    const sum = reviews.reduce(
-      (acc, r) => acc + Number(r.rating || 0),
-      0
-    );
+    const sum = reviews.reduce((acc, r) => acc + Number(r.rating || 0), 0);
     average = Number((sum / totalReviews).toFixed(2));
   }
 

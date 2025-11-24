@@ -6,9 +6,7 @@ import validator from "validator";
 import { supabase } from "../config/db.js";
 
 // Import lightweight utilities from Product model
-import {
-  recalcProductRatings,
-} from "../models/Product.js";
+import { recalcProductRatings } from "../models/Product.js";
 
 /**
  * Validate UUID format (Supabase IDs)
