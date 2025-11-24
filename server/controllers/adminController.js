@@ -1796,7 +1796,7 @@ export const createCoupon = asyncHandler(async (req, res, next) => {
 
   const {
     code,
-    discountType,
+    discountType, // 'fixed' | 'percent'
     discountValue,
     minPurchase,
     maxDiscount,
@@ -1817,13 +1817,14 @@ export const createCoupon = asyncHandler(async (req, res, next) => {
     );
   }
 
-  if (!["percent", "amount"].includes(discountType)) {
-    throw new AppError("Invalid discountType", 400);
+  // Align with schema enum: coupon_discount_type_enum ('fixed', 'percent')
+  if (!["fixed", "percent"].includes(discountType)) {
+    throw new AppError("Invalid discountType. Use 'fixed' or 'percent'.", 400);
   }
 
   const insertData = {
     code: String(code).trim().toUpperCase(),
-    discount_type: discountType,
+    discount_type: discountType, // 'fixed' | 'percent'
     discount_value: Number(discountValue),
     min_purchase: minPurchase != null ? Number(minPurchase) : 0,
     max_discount: maxDiscount != null ? Number(maxDiscount) : null,
@@ -1870,17 +1871,17 @@ export const getCoupons = asyncHandler(async (req, res, next) => {
 
   const {
     search,
-    type,
+    type, // 'fixed' | 'percent'
     minDiscount,
     maxDiscount,
-    minCart,
-    maxCart,
-    active,
-    valid,
+    minCart, // maps to min_purchase
+    maxCart, // maps to min_purchase
+    active, // boolean string
+    valid, // 'true' for currently valid coupons
     createdFrom,
     createdTo,
-    expiresFrom,
-    expiresTo,
+    expiresFrom, // maps to valid_to
+    expiresTo, // maps to valid_to
     sortBy = "created_at",
     sortOrder = "desc",
   } = req.query;
@@ -1893,25 +1894,29 @@ export const getCoupons = asyncHandler(async (req, res, next) => {
     query = query.ilike("code", pattern);
   }
 
-  // TYPE = fixed or percent
+  // TYPE = fixed or percent (schema-aligned)
   if (type) query = query.eq("discount_type", type);
 
   // DISCOUNT RANGE
   if (minDiscount) query = query.gte("discount_value", Number(minDiscount));
   if (maxDiscount) query = query.lte("discount_value", Number(maxDiscount));
 
-  // MIN CART RANGE
-  if (minCart) query = query.gte("min_cart", Number(minCart));
-  if (maxCart) query = query.lte("min_cart", Number(maxCart));
+  // MIN CART RANGE (maps to min_purchase)
+  if (minCart) query = query.gte("min_purchase", Number(minCart));
+  if (maxCart) query = query.lte("min_purchase", Number(maxCart));
 
-  // ACTIVE only
+  // ACTIVE only (maps to is_active)
   if (typeof active === "string") {
-    query = query.eq("active", active === "true");
+    query = query.eq("is_active", active === "true");
   }
 
-  // VALID (not expired & active)
+  // VALID (not expired & active) – basic DB-side filter
   if (valid === "true") {
-    query = query.eq("active", true).gt("expires_at", new Date().toISOString());
+    const nowIso = new Date().toISOString();
+    query = query
+      .eq("is_active", true)
+      // valid_to null = no expiry, OR valid_to in future
+      .or(`valid_to.is.null,valid_to.gt.${nowIso}`);
   }
 
   // CREATION DATE RANGE
@@ -1920,21 +1925,21 @@ export const getCoupons = asyncHandler(async (req, res, next) => {
   if (createdTo)
     query = query.lte("created_at", new Date(createdTo).toISOString());
 
-  // EXPIRY DATE RANGE
+  // EXPIRY DATE RANGE (maps to valid_to)
   if (expiresFrom)
-    query = query.gte("expires_at", new Date(expiresFrom).toISOString());
+    query = query.gte("valid_to", new Date(expiresFrom).toISOString());
   if (expiresTo)
-    query = query.lte("expires_at", new Date(expiresTo).toISOString());
+    query = query.lte("valid_to", new Date(expiresTo).toISOString());
 
-  // SORTING
+  // SORTING (aligned with schema)
   const validSortFields = [
     "created_at",
-    "expires_at",
+    "valid_to",
     "discount_value",
-    "min_cart",
-    "active",
+    "min_purchase",
+    "is_active",
     "usage_limit",
-    "used_count",
+    "times_used",
   ];
 
   const sortField = validSortFields.includes(sortBy) ? sortBy : "created_at";
@@ -2035,7 +2040,7 @@ export const updateCoupon = asyncHandler(async (req, res, next) => {
     dbUpdates.code = String(updates.code).trim().toUpperCase();
   }
   if (updates.discountType) {
-    if (!["percent", "amount"].includes(updates.discountType)) {
+    if (!["fixed", "percent"].includes(updates.discountType)) {
       throw new AppError("Invalid discountType", 400);
     }
     dbUpdates.discount_type = updates.discountType;
