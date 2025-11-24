@@ -878,15 +878,22 @@ export const getAllProducts = asyncHandler(
       search,
       category,
       brand,
+      minPrice,
+      maxPrice,
+      minStock,
+      maxStock,
+      availability,
       isActive,
+      isFeatured,
+      createdFrom,
+      createdTo,
       sortBy = "created_at",
       sortOrder = "desc",
     } = req.query;
 
-    let query = supabase.from("products").select("*", {
-      count: "exact",
-    });
+    let query = supabase.from("products").select("*", { count: "exact" });
 
+    // SEARCH
     if (search) {
       const pattern = buildIlikePattern(search);
       query = query.or(
@@ -894,39 +901,65 @@ export const getAllProducts = asyncHandler(
       );
     }
 
+    // MULTI-SELECT CATEGORY
     if (category) {
-      query = query.eq("category", category);
+      query = query.in("category", category.split(","));
     }
 
+    // MULTI-SELECT BRAND
     if (brand) {
-      query = query.eq("brand", brand);
+      query = query.in("brand", brand.split(","));
     }
 
+    // AVAILABILITY (text)
+    if (availability) {
+      query = query.eq("availability", availability);
+    }
+
+    // PRICE RANGE
+    if (minPrice) query = query.gte("final_price", Number(minPrice));
+    if (maxPrice) query = query.lte("final_price", Number(maxPrice));
+
+    // STOCK RANGE
+    if (minStock) query = query.gte("stock", Number(minStock));
+    if (maxStock) query = query.lte("stock", Number(maxStock));
+
+    // BOOLEAN FILTERS
     if (typeof isActive === "string") {
-      if (isActive === "true") {
-        query = query.eq("is_active", true);
-      } else if (isActive === "false") {
-        query = query.eq("is_active", false);
-      }
+      query = query.eq("is_active", isActive === "true");
     }
 
+    if (typeof isFeatured === "string") {
+      query = query.eq("is_featured", isFeatured === "true");
+    }
+
+    // DATE RANGE
+    if (createdFrom) {
+      query = query.gte("created_at", new Date(createdFrom).toISOString());
+    }
+    if (createdTo) {
+      query = query.lte("created_at", new Date(createdTo).toISOString());
+    }
+
+    // SORTING
     const validSortFields = [
       "name",
       "brand",
       "category",
       "final_price",
+      "original_price",
+      "discount_percentage",
+      "availability",
+      "stock",
+      "sales_count",
       "created_at",
       "updated_at",
-      "sales_count",
     ];
 
-    const sortField = validSortFields.includes(sortBy)
-      ? sortBy
-      : "created_at";
-    const ascending = sortOrder === "asc";
+    const sortField = validSortFields.includes(sortBy) ? sortBy : "created_at";
 
     query = query
-      .order(sortField, { ascending })
+      .order(sortField, { ascending: sortOrder === "asc" })
       .range(skip, skip + limit - 1);
 
     const { data: products, error, count } = await query;
@@ -943,8 +976,8 @@ export const getAllProducts = asyncHandler(
       count: count ?? products.length,
       page,
       pages: Math.ceil((count ?? products.length) / limit),
+      filters: req.query,
       data: products,
-      filters: { search, category, brand, isActive, sortBy, sortOrder },
     });
 
     logger.info("Admin fetched products", {
