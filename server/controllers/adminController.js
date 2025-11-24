@@ -1485,6 +1485,11 @@ export const getOrders = asyncHandler(async (req, res, next) => {
   const {
     status,
     isPaid,
+    minTotal,
+    maxTotal,
+    createdFrom,
+    createdTo,
+    hasItems,
     sortBy = "created_at",
     sortOrder = "desc",
   } = req.query;
@@ -1494,38 +1499,30 @@ export const getOrders = asyncHandler(async (req, res, next) => {
     query: req.query,
   });
 
-  let query = supabase
-    .from("orders")
-    .select(
-      `
-      *,
-      items:order_items (*)
-    `,
-      { count: "exact" }
-    );
+  // STATUS
+  if (status) query = query.eq("status", status);
 
-  if (status) {
-    query = query.eq("status", status);
-  }
-
+  // PAYMENT STATUS
   if (typeof isPaid === "string") {
-    if (isPaid === "true") query = query.eq("is_paid", true);
-    else if (isPaid === "false") query = query.eq("is_paid", false);
+    query = query.eq("is_paid", isPaid === "true");
   }
 
-  const validSortFields = [
-    "created_at",
-    "total_price",
-    "status",
-    "updated_at",
-  ];
-  const sortField = validSortFields.includes(sortBy)
-    ? sortBy
-    : "created_at";
-  const ascending = sortOrder === "asc";
+  // TOTAL PRICE RANGE
+  if (minTotal) query = query.gte("total_price", Number(minTotal));
+  if (maxTotal) query = query.lte("total_price", Number(maxTotal));
+
+  // DATE RANGE
+  if (createdFrom) query = query.gte("created_at", new Date(createdFrom).toISOString());
+  if (createdTo) query = query.lte("created_at", new Date(createdTo).toISOString());
+
+  // ORDERS with OR without items
+  if (hasItems === "true") query = query.not("items", "is", null);
+
+  const validSort = ["created_at", "total_price", "status", "updated_at"];
+  const sortField = validSort.includes(sortBy) ? sortBy : "created_at";
 
   query = query
-    .order(sortField, { ascending })
+    .order(sortField, { ascending: sortOrder === "asc" })
     .range(skip, skip + limit - 1);
 
   const { data: orders, error, count } = await query;
@@ -1539,9 +1536,9 @@ export const getOrders = asyncHandler(async (req, res, next) => {
 
   res.json({
     success: true,
-    count: count ?? orders.length,
     page,
     pages: Math.ceil((count ?? orders.length) / limit),
+    count,
     data: orders,
   });
 });
