@@ -1,0 +1,71 @@
+/server
+│
+├── /config
+│   ├── db.js                # Database connection setup (exports supabase + optional supabaseAdmin)
+│   └── rateLimit.js         # Rate limiting configurations
+│
+├── /controllers
+│   ├── authController.js    # Authentication logic
+│   ├── cartController.js    # Cart operations
+│   ├── orderController.js   # Order processing
+│   ├── paymentController.js # Payment handling
+│   ├── productController.js # Product management
+│   ├── userController.js    # User management
+│   ├── logController.js     # Log management
+│   └── adminController.js   # Admin-specific operations
+│
+├── /middleware
+│   ├── authMiddleware.js        # Authentication checks
+│   ├── errorMiddleware.js       # Error handling
+│   ├── upload.js                # Image upload handling
+│   ├── logger.js                # Custom logging system
+│   └── slowRequestLogger.js     # Logs slow HTTP requests (threshold configurable)
+│
+├── /models
+│   ├── Product.js          # Product schema / DB helpers
+│   ├── User.js             # User schema / DB helpers
+│   ├── Cart.js             # Cart schema
+│   ├── Coupon.js           # Coupon schema
+│   ├── Game.js             # Game schema
+│   ├── Order.js            # Order schema
+│   ├── PrebuiltPc.js       # Prebuilt PC schema
+│   └── Review.js           # Review schema (create/update/softDelete)
+│
+├── /routes
+│   ├── authRoutes.js       # Authentication endpoints
+│   ├── productRoutes.js    # Product API routes
+│   ├── userRoutes.js       # User API routes
+│   ├── adminRoutes.js      # Admin API routes
+│   ├── cartRoutes.js       # Cart API routes
+│   ├── orderRoutes.js      # Order API routes
+│   └── paymentRoutes.js    # Payment API routes
+│
+├── /utils
+│   ├── apiFeatures.js      # Advanced query features
+│   ├── email.js            # Email service
+│   ├── generateToken.js    # JWT handling
+│   ├── cloudinary.js       # Cloudinary helpers
+│   └── appError.js         # Custom error class
+│
+├── /public
+│   └── /uploads            # Product images storage
+│       ├── /products       # Product images
+│       └── /avatars        # User avatars
+│
+├── /views
+│   └── /email
+│       ├── emailVerification.pug 
+│       ├── passwordReset.pug 
+│       ├── welcome.pug
+│       └── orderConfirmation.pug 
+│
+├── /logs                   # Application logs
+│   ├── access.log          # Request logs
+│   ├── error.log           # Error logs
+│   └── combined.log        # All logs
+│
+├── .env                    # Local environment variables (SUPABASE_URL, SUPABASE_KEY, SUPABASE_SERVICE_ROLE_KEY, etc.)
+├── .gitignore
+├── package.json
+├── package-lock.json
+└── server.js               # Main application entry point
