@@ -125,28 +125,79 @@ const VALID_CATEGORIES = [
  */
 const mapProduct = (row) => {
   if (!row) return null;
+
+  // Parse specifications from object to array format
+  let specifications = null;
+  if (row.specifications) {
+    try {
+      const spec =
+        typeof row.specifications === "string"
+          ? JSON.parse(row.specifications)
+          : row.specifications;
+
+      // Convert object to array of {key, value} pairs
+      if (spec && typeof spec === "object" && !Array.isArray(spec)) {
+        specifications = Object.entries(spec).map(([key, value]) => ({
+          key: key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
+          value: Array.isArray(value) ? value.join(", ") : String(value),
+        }));
+      } else if (Array.isArray(spec)) {
+        specifications = spec;
+      }
+    } catch (e) {
+      logger.warn("Failed to parse specifications", {
+        error: e.message,
+        productId: row.id,
+      });
+    }
+  }
+
+  // Parse dimensions from object format
+  let dimensions = null;
+  if (row.dimensions) {
+    try {
+      const dim =
+        typeof row.dimensions === "string"
+          ? JSON.parse(row.dimensions)
+          : row.dimensions;
+
+      if (dim && typeof dim === "object") {
+        dimensions = {
+          length: dim.length_mm || dim.length || null,
+          width: dim.width_mm || dim.width || null,
+          height: dim.height_mm || dim.height || null,
+        };
+      }
+    } catch (e) {
+      logger.warn("Failed to parse dimensions", {
+        error: e.message,
+        productId: row.id,
+      });
+    }
+  }
+
   return {
     id: row.id,
     name: row.name,
     category: row.category,
     brand: row.brand,
-    specifications: row.specifications,
-    originalPrice: row.original_price,
-    discountPercentage: row.discount_percentage,
-    finalPrice: row.final_price,
-    stock: row.stock,
+    specifications,
+    originalPrice: Number(row.original_price) || 0,
+    discountPercentage: Number(row.discount_percentage) || 0,
+    finalPrice: Number(row.final_price) || 0,
+    stock: Number(row.stock) || 0,
     availability: row.availability,
     images: row.images,
     description: row.description,
     ratings: row.ratings,
     features: row.features,
     warranty: row.warranty,
-    weight: row.weight,
-    dimensions: row.dimensions,
+    weight: row.weight ? Number(row.weight) : null,
+    dimensions,
     sku: row.sku,
     isActive: row.is_active,
     isFeatured: row.is_featured,
-    salesCount: row.sales_count,
+    salesCount: Number(row.sales_count) || 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -222,7 +273,7 @@ export const getAllProducts = asyncHandler(async (req, res, next) => {
   let query = supabase
     .from("products")
     .select(
-      "id, name, category, brand, final_price, images, ratings, stock, availability, is_active",
+      "id, name, category, brand, sku, original_price, discount_percentage, final_price, images, ratings, stock, availability, is_active",
       { count: "exact" }
     )
     .eq("is_active", true);
