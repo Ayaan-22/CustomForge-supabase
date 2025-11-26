@@ -72,7 +72,7 @@ export function LogDetailsModal({ isOpen, onClose, log }: LogDetailsModalProps) 
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-[#A0A0A8] uppercase tracking-wide">Detailed Information</h3>
             <div className="bg-[#0F0F15] border border-[#2A2A35] rounded-lg p-4">
-              <pre className="text-[#A0A0A8] text-xs overflow-x-auto whitespace-pre-wrap break-words">
+              <pre className="text-[#A0A0A8] text-xs overflow-x-auto whitespace-pre-wrap">
                 {JSON.stringify(log.details, null, 2)}
               </pre>
             </div>

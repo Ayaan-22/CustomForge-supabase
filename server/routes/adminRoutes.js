@@ -164,7 +164,6 @@ router.delete("/reviews/:id", deleteProductReview);
 router.use("/logs", logRateLimiter); // Apply ONLY to /logs routes
 
 router.get("/logs", getAllLogs);
-router.get("/logs/:id", getLogById);
 router.get("/logs/dates/available", getAvailableLogDates);
 router.get("/logs/stats", getLogStats);
 router.get("/logs/errors", (req, res, next) => {
@@ -175,5 +174,6 @@ router.get("/logs/access", (req, res, next) => {
   req.query.type = "request";
   return getAllLogs(req, res, next);
 });
+router.get("/logs/:id", getLogById);
 
 export default router;

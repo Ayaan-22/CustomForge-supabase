@@ -1,38 +1,77 @@
-"use client"
+"use client";
 
-import { Star, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { format } from "date-fns"
+import { Star, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { format } from "date-fns";
 
 interface Review {
-  _id: string
-  product: string
-  user: {
-    _id: string
-    name: string
-    avatar: string
-    verified: boolean
-  }
-  rating: number
-  title: string
-  comment: string
-  verifiedPurchase: boolean
-  helpfulVotes: number
-  reported: boolean
-  reportReason?: string
-  media: string[]
-  createdAt: string
-  updatedAt: string
+  _id: string;
+  product_id?: string;
+  user_id?: string;
+  product?:
+    | {
+        name: string;
+      }
+    | string;
+  user?: {
+    _id?: string;
+    name: string;
+    avatar?: string;
+    verified?: boolean;
+    email?: string;
+  };
+  rating: number;
+  title: string;
+  comment: string;
+  verifiedPurchase?: boolean;
+  verified_purchase?: boolean;
+  helpfulVotes?: number;
+  helpful_votes?: number;
+  reported: boolean;
+  reportReason?: string;
+  report_reason?: string;
+  media: string[];
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
 }
 
 interface ReviewDetailsModalProps {
-  review: Review
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  review: Review;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
-export function ReviewDetailsModal({ review, open, onOpenChange }: ReviewDetailsModalProps) {
-  if (!open) return null
+export function ReviewDetailsModal({
+  review,
+  open,
+  onOpenChange,
+}: ReviewDetailsModalProps) {
+  if (!open) return null;
+
+  // Helper to safely format dates
+  const safeFormatDate = (dateValue: any, formatStr: string) => {
+    if (!dateValue) return "N/A";
+    const parsed = new Date(dateValue);
+    if (isNaN(parsed.getTime())) return "Invalid Date";
+    return format(parsed, formatStr);
+  };
+
+  // Normalize data to handle both snake_case and camelCase
+  const productName =
+    typeof review.product === "string"
+      ? review.product
+      : review.product?.name || "Unknown Product";
+  const userName = review.user?.name || "Unknown User";
+  const userAvatar =
+    review.user?.avatar || "/placeholder.svg?height=32&width=32";
+  const verifiedPurchase =
+    review.verifiedPurchase ?? review.verified_purchase ?? false;
+  const helpfulVotes = review.helpfulVotes ?? review.helpful_votes ?? 0;
+  const reportReason = review.reportReason || review.report_reason;
+  const createdAt = review.createdAt || review.created_at;
+  const updatedAt = review.updatedAt || review.updated_at;
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -56,11 +95,11 @@ export function ReviewDetailsModal({ review, open, onOpenChange }: ReviewDetails
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-[#A0A0A8] text-sm mb-2">Product</p>
-              <p className="text-white font-medium">{review.product}</p>
+              <p className="text-white font-medium">{productName}</p>
             </div>
             <div>
               <p className="text-[#A0A0A8] text-sm mb-2">Reviewer</p>
-              <p className="text-white font-medium">{review.user.name}</p>
+              <p className="text-white font-medium">{userName}</p>
             </div>
           </div>
 
@@ -72,15 +111,23 @@ export function ReviewDetailsModal({ review, open, onOpenChange }: ReviewDetails
                 {Array.from({ length: 5 }).map((_, i) => (
                   <Star
                     key={i}
-                    className={`w-5 h-5 ${i < review.rating ? "text-yellow-400 fill-yellow-400" : "text-[#2A2A35]"}`}
+                    className={`w-5 h-5 ${
+                      i < review.rating
+                        ? "text-yellow-400 fill-yellow-400"
+                        : "text-[#2A2A35]"
+                    }`}
                   />
                 ))}
-                <span className="text-white font-medium ml-2">{review.rating}/5</span>
+                <span className="text-white font-medium ml-2">
+                  {review.rating}/5
+                </span>
               </div>
             </div>
             <div>
               <p className="text-[#A0A0A8] text-sm mb-2">Verified Purchase</p>
-              <p className="text-white font-medium">{review.verifiedPurchase ? "Yes" : "No"}</p>
+              <p className="text-white font-medium">
+                {verifiedPurchase ? "Yes" : "No"}
+              </p>
             </div>
           </div>
 
@@ -93,20 +140,24 @@ export function ReviewDetailsModal({ review, open, onOpenChange }: ReviewDetails
           {/* Comment */}
           <div>
             <p className="text-[#A0A0A8] text-sm mb-2">Comment</p>
-            <p className="text-white bg-[#0F0F14] rounded-lg p-4 border border-[#2A2A35]">{review.comment}</p>
+            <p className="text-white bg-[#0F0F14] rounded-lg p-4 border border-[#2A2A35]">
+              {review.comment}
+            </p>
           </div>
 
           {/* Helpful Votes */}
           <div>
             <p className="text-[#A0A0A8] text-sm mb-2">Helpful Votes</p>
-            <p className="text-2xl font-bold text-green-400">{review.helpfulVotes}</p>
+            <p className="text-2xl font-bold text-green-400">{helpfulVotes}</p>
           </div>
 
           {/* Reported status and reason */}
           {review.reported && (
             <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
               <p className="text-red-400 font-medium mb-2">Reported</p>
-              <p className="text-white text-sm">{review.reportReason || "No reason provided"}</p>
+              <p className="text-white text-sm">
+                {reportReason || "No reason provided"}
+              </p>
             </div>
           )}
 
@@ -131,11 +182,15 @@ export function ReviewDetailsModal({ review, open, onOpenChange }: ReviewDetails
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <p className="text-[#A0A0A8] mb-1">Created</p>
-              <p className="text-white">{format(new Date(review.createdAt), "MMM dd, yyyy HH:mm")}</p>
+              <p className="text-white">
+                {safeFormatDate(createdAt, "MMM dd, yyyy HH:mm")}
+              </p>
             </div>
             <div>
               <p className="text-[#A0A0A8] mb-1">Updated</p>
-              <p className="text-white">{format(new Date(review.updatedAt), "MMM dd, yyyy HH:mm")}</p>
+              <p className="text-white">
+                {safeFormatDate(updatedAt, "MMM dd, yyyy HH:mm")}
+              </p>
             </div>
           </div>
         </div>
@@ -152,5 +207,5 @@ export function ReviewDetailsModal({ review, open, onOpenChange }: ReviewDetails
         </div>
       </div>
     </div>
-  )
+  );
 }
