@@ -1,63 +1,66 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
 
-import { useState } from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { Eye, EyeOff, Lock, Mail, Loader2 } from "lucide-react"
-import { useAuth } from "@/app/components/auth-provider" // Use auth hook
-import { useAuthStore } from "@/lib/auth-store"
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Eye, EyeOff, Lock, Mail, Loader2 } from "lucide-react";
+import { useAuth } from "@/app/components/auth-provider"; // Use auth hook
+import { useAuthStore } from "@/lib/auth-store";
 
 export default function LoginPage() {
-  const { login, submitTwoFactor, requiresTwoFactor } = useAuth()
-  const router = useRouter()
-  const [loading, setLoading] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState("")
+  const { login, submitTwoFactor, requiresTwoFactor } = useAuth();
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
   const [formData, setFormData] = useState({
     email: "",
     password: "",
-  })
-  const [twoFactorCode, setTwoFactorCode] = useState("")
-  const [showTwoFactorModal, setShowTwoFactorModal] = useState(requiresTwoFactor)
-  const store = useAuthStore()
+  });
+  const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [showTwoFactorModal, setShowTwoFactorModal] =
+    useState(requiresTwoFactor);
+  const store = useAuthStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError("")
+    e.preventDefault();
+    setLoading(true);
+    setError("");
 
     try {
-      await login(formData)
+      await login(formData);
     } catch (err: any) {
       if (err.message === "2FA required") {
-        setShowTwoFactorModal(true)
+        setShowTwoFactorModal(true);
       } else {
-        setError(err.message || "Something went wrong")
+        setError(err.message || "Something went wrong");
       }
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleTwoFactorSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError("")
+    e.preventDefault();
+    setLoading(true);
+    setError("");
 
     try {
-      await submitTwoFactor(twoFactorCode, formData.email, formData.password)
+      await submitTwoFactor(twoFactorCode, formData.email, formData.password);
     } catch (err: any) {
-      setError(err.message || "2FA verification failed")
-      setLoading(false)
+      setError(err.message || "2FA verification failed");
+      setLoading(false);
     }
-  }
+  };
 
   if (showTwoFactorModal) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="w-full max-w-md bg-[#18181b] border border-white/10 rounded-2xl p-8 shadow-2xl backdrop-blur-xl">
-          <h2 className="text-2xl font-bold text-white mb-6">Two-Factor Authentication</h2>
+          <h2 className="text-2xl font-bold text-white mb-6">
+            Two-Factor Authentication
+          </h2>
 
           <form onSubmit={handleTwoFactorSubmit} className="space-y-6">
             <input
@@ -66,7 +69,7 @@ export default function LoginPage() {
               value={twoFactorCode}
               onChange={(e) => setTwoFactorCode(e.target.value.slice(0, 6))}
               className="w-full bg-[#27272a] border border-white/10 rounded-lg py-2.5 px-4 text-white"
-              maxLength="6"
+              maxLength={6}
             />
             <button
               type="submit"
@@ -78,7 +81,7 @@ export default function LoginPage() {
           </form>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -104,7 +107,9 @@ export default function LoginPage() {
                 type="email"
                 required
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
                 className="w-full bg-[#27272a] border border-white/10 rounded-lg py-2.5 pl-10 pr-4 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                 placeholder="admin@example.com"
               />
@@ -113,8 +118,13 @@ export default function LoginPage() {
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-300">Password</label>
-              <Link href="/forgot-password" className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
+              <label className="text-sm font-medium text-gray-300">
+                Password
+              </label>
+              <Link
+                href="/forgot-password"
+                className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+              >
                 Forgot password?
               </Link>
             </div>
@@ -124,7 +134,9 @@ export default function LoginPage() {
                 type={showPassword ? "text" : "password"}
                 required
                 value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
                 className="w-full bg-[#27272a] border border-white/10 rounded-lg py-2.5 pl-10 pr-12 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                 placeholder="••••••••"
               />
@@ -133,7 +145,11 @@ export default function LoginPage() {
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
               >
-                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                {showPassword ? (
+                  <EyeOff className="w-5 h-5" />
+                ) : (
+                  <Eye className="w-5 h-5" />
+                )}
               </button>
             </div>
           </div>
@@ -149,11 +165,14 @@ export default function LoginPage() {
 
         <div className="mt-6 text-center text-sm text-gray-400">
           Don't have an account?{" "}
-          <Link href="/register" className="text-blue-400 hover:text-blue-300 font-medium transition-colors">
+          <Link
+            href="/register"
+            className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
+          >
             Create account
           </Link>
         </div>
       </div>
     </div>
-  )
+  );
 }

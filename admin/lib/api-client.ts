@@ -691,7 +691,7 @@ export const apiClient = {
     return response.json();
   },
 
-  updateCoupon: async (id: number, data: Record<string, any>) => {
+  updateCoupon: async (id: string, data: Record<string, any>) => {
     if (USE_MOCK_API) {
       return { id, ...data };
     }
@@ -704,7 +704,7 @@ export const apiClient = {
     return response.json();
   },
 
-  deleteCoupon: async (id: number) => {
+  deleteCoupon: async (id: string) => {
     if (USE_MOCK_API) {
       return { message: "Coupon deleted" };
     }
@@ -715,7 +715,7 @@ export const apiClient = {
     return response.json();
   },
 
-  toggleCoupon: async (id: number) => {
+  toggleCoupon: async (id: string) => {
     if (USE_MOCK_API) {
       return { message: "Coupon status toggled" };
     }

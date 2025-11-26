@@ -97,14 +97,23 @@ export function ProductModal({
         stock: initialData.stock || "",
         images: initialData.images || [],
         imageFiles: [],
-        specifications: initialData.specifications || [],
-        features: initialData.features || [],
+        specifications:
+          typeof initialData.specifications === "string"
+            ? JSON.parse(initialData.specifications)
+            : initialData.specifications || [],
+        features:
+          typeof initialData.features === "string"
+            ? JSON.parse(initialData.features)
+            : initialData.features || [],
         warranty: initialData.warranty || "1 year limited warranty",
         weight: initialData.weight || "",
-        dimensions: initialData.dimensions || {
+        dimensions: {
           length: "",
           width: "",
           height: "",
+          ...(typeof initialData.dimensions === "string"
+            ? JSON.parse(initialData.dimensions)
+            : initialData.dimensions || {}),
         },
         isActive:
           initialData.isActive !== undefined ? initialData.isActive : true,

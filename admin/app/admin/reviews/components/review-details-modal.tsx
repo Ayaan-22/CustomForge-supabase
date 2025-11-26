@@ -5,36 +5,30 @@ import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 
 interface Review {
-  _id: string;
-  product_id?: string;
-  user_id?: string;
-  product?:
-    | {
-        name: string;
-      }
-    | string;
-  user?: {
-    _id?: string;
-    name: string;
-    avatar?: string;
-    verified?: boolean;
-    email?: string;
-  };
+  id: string;
+  product_id: string;
+  user_id: string;
   rating: number;
   title: string;
   comment: string;
-  verifiedPurchase?: boolean;
-  verified_purchase?: boolean;
-  helpfulVotes?: number;
-  helpful_votes?: number;
+  verified_purchase: boolean;
+  helpful_votes: number;
   reported: boolean;
-  reportReason?: string;
   report_reason?: string;
   media: string[];
-  createdAt?: string;
-  created_at?: string;
-  updatedAt?: string;
-  updated_at?: string;
+  platform?: string;
+  playtime_hours?: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  user?: {
+    name: string;
+    email: string;
+    avatar?: string;
+  };
+  product?: {
+    name: string;
+  };
 }
 
 interface ReviewDetailsModalProps {
@@ -58,20 +52,9 @@ export function ReviewDetailsModal({
     return format(parsed, formatStr);
   };
 
-  // Normalize data to handle both snake_case and camelCase
-  const productName =
-    typeof review.product === "string"
-      ? review.product
-      : review.product?.name || "Unknown Product";
+  const productName = review.product?.name || "Unknown Product";
   const userName = review.user?.name || "Unknown User";
-  const userAvatar =
-    review.user?.avatar || "/placeholder.svg?height=32&width=32";
-  const verifiedPurchase =
-    review.verifiedPurchase ?? review.verified_purchase ?? false;
-  const helpfulVotes = review.helpfulVotes ?? review.helpful_votes ?? 0;
-  const reportReason = review.reportReason || review.report_reason;
-  const createdAt = review.createdAt || review.created_at;
-  const updatedAt = review.updatedAt || review.updated_at;
+  // const userAvatar = review.user?.avatar || "/placeholder.svg?height=32&width=32";
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -126,7 +109,7 @@ export function ReviewDetailsModal({
             <div>
               <p className="text-[#A0A0A8] text-sm mb-2">Verified Purchase</p>
               <p className="text-white font-medium">
-                {verifiedPurchase ? "Yes" : "No"}
+                {review.verified_purchase ? "Yes" : "No"}
               </p>
             </div>
           </div>
@@ -148,7 +131,9 @@ export function ReviewDetailsModal({
           {/* Helpful Votes */}
           <div>
             <p className="text-[#A0A0A8] text-sm mb-2">Helpful Votes</p>
-            <p className="text-2xl font-bold text-green-400">{helpfulVotes}</p>
+            <p className="text-2xl font-bold text-green-400">
+              {review.helpful_votes}
+            </p>
           </div>
 
           {/* Reported status and reason */}
@@ -156,13 +141,13 @@ export function ReviewDetailsModal({
             <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
               <p className="text-red-400 font-medium mb-2">Reported</p>
               <p className="text-white text-sm">
-                {reportReason || "No reason provided"}
+                {review.report_reason || "No reason provided"}
               </p>
             </div>
           )}
 
           {/* Media gallery */}
-          {review.media.length > 0 && (
+          {review.media && review.media.length > 0 && (
             <div>
               <p className="text-[#A0A0A8] text-sm mb-3">Media</p>
               <div className="grid grid-cols-2 gap-3">
@@ -183,13 +168,13 @@ export function ReviewDetailsModal({
             <div>
               <p className="text-[#A0A0A8] mb-1">Created</p>
               <p className="text-white">
-                {safeFormatDate(createdAt, "MMM dd, yyyy HH:mm")}
+                {safeFormatDate(review.created_at, "MMM dd, yyyy HH:mm")}
               </p>
             </div>
             <div>
               <p className="text-[#A0A0A8] mb-1">Updated</p>
               <p className="text-white">
-                {safeFormatDate(updatedAt, "MMM dd, yyyy HH:mm")}
+                {safeFormatDate(review.updated_at, "MMM dd, yyyy HH:mm")}
               </p>
             </div>
           </div>
