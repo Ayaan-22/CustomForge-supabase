@@ -1,0 +1,20 @@
+{
+  "logs": [
+    {
+      "id": 1,
+      "date": "2024-01-15 14:32:45",
+      "level": "info",
+      "action": "User login",
+      "admin": "John Doe",
+      "details": { "userId": 123, "email": "user@example.com", "ip": "192.168.1.1" }
+    },
+    {
+      "id": 2,
+      "date": "2024-01-15 14:28:12",
+      "level": "warn",
+      "action": "Failed login attempt",
+      "admin": "System",
+      "details": { "email": "unknown@example.com", "attempts": 3, "ip": "192.168.1.50" }
+    }
+  ]
+}

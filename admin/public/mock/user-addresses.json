@@ -1,0 +1,43 @@
+{
+  "addresses": [
+    {
+      "id": "addr-001",
+      "userId": "507f1f77bcf86cd799439011",
+      "label": "Home",
+      "fullName": "John Doe",
+      "address": "123 Main Street",
+      "city": "San Francisco",
+      "state": "CA",
+      "postalCode": "94102",
+      "country": "United States",
+      "phoneNumber": "+1-555-0123",
+      "isDefault": true
+    },
+    {
+      "id": "addr-002",
+      "userId": "507f1f77bcf86cd799439011",
+      "label": "Work",
+      "fullName": "John Doe",
+      "address": "456 Tech Boulevard",
+      "city": "San Francisco",
+      "state": "CA",
+      "postalCode": "94105",
+      "country": "United States",
+      "phoneNumber": "+1-555-0124",
+      "isDefault": false
+    },
+    {
+      "id": "addr-003",
+      "userId": "507f1f77bcf86cd799439012",
+      "label": "Home",
+      "fullName": "Jane Smith",
+      "address": "789 Oak Avenue",
+      "city": "New York",
+      "state": "NY",
+      "postalCode": "10001",
+      "country": "United States",
+      "phoneNumber": "+1-555-0125",
+      "isDefault": true
+    }
+  ]
+}

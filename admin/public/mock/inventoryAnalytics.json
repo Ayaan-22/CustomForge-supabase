@@ -1,0 +1,11 @@
+{
+  "totalProducts": 342,
+  "lowStockItems": 12,
+  "outOfStock": 3,
+  "totalValue": 125430.5,
+  "categories": [
+    { "name": "Electronics", "count": 156, "value": 78900 },
+    { "name": "Displays", "count": 89, "value": 32450 },
+    { "name": "Accessories", "count": 97, "value": 14080.5 }
+  ]
+}

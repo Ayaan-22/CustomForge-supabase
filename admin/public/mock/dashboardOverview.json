@@ -1,0 +1,24 @@
+{
+  "metrics": {
+    "totalRevenue": 45231.89,
+    "totalOrders": 1234,
+    "activeUsers": 5678,
+    "activeProducts": 342
+  },
+  "revenueData": [
+    { "date": "2024-01-01", "revenue": 2400 },
+    { "date": "2024-01-02", "revenue": 1398 },
+    { "date": "2024-01-03", "revenue": 9800 },
+    { "date": "2024-01-04", "revenue": 3908 },
+    { "date": "2024-01-05", "revenue": 4800 },
+    { "date": "2024-01-06", "revenue": 3800 },
+    { "date": "2024-01-07", "revenue": 4300 }
+  ],
+  "recentOrders": [
+    { "id": "ORD-1001", "customer": "John Doe", "amount": 234.5, "status": "delivered" },
+    { "id": "ORD-1002", "customer": "Jane Smith", "amount": 567.8, "status": "processing" },
+    { "id": "ORD-1003", "customer": "Bob Johnson", "amount": 123.45, "status": "pending" },
+    { "id": "ORD-1004", "customer": "Alice Brown", "amount": 890.12, "status": "delivered" },
+    { "id": "ORD-1005", "customer": "Charlie Wilson", "amount": 456.78, "status": "delivered" }
+  ]
+}

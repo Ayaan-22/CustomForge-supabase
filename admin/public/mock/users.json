@@ -1,0 +1,36 @@
+{
+  "users": [
+    {
+      "id": "507f1f77bcf86cd799439011",
+      "name": "John Doe",
+      "email": "john@example.com",
+      "role": "user",
+      "avatar": "https://images.unsplash.com/photo-1535713575915-37453b76f588?w=400",
+      "phone": "+1-555-0101",
+      "address": "123 Main Street, San Francisco, CA 94102",
+      "is_email_verified": true,
+      "two_factor_enabled": false,
+      "active": true,
+      "stripe_customer_id": "cus_123456789",
+      "payment_methods": [{ "type": "card", "last4": "4242", "brand": "visa" }],
+      "created_at": "2024-01-01T10:00:00Z",
+      "updated_at": "2024-01-15T14:30:00Z"
+    },
+    {
+      "id": "507f1f77bcf86cd799439012",
+      "name": "Jane Smith",
+      "email": "jane@example.com",
+      "role": "admin",
+      "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400",
+      "phone": "+1-555-0102",
+      "address": "456 Oak Avenue, New York, NY 10001",
+      "is_email_verified": true,
+      "two_factor_enabled": true,
+      "active": true,
+      "stripe_customer_id": "cus_987654321",
+      "payment_methods": [{ "type": "card", "last4": "5555", "brand": "mastercard" }],
+      "created_at": "2023-12-15T08:20:00Z",
+      "updated_at": "2024-01-14T09:15:00Z"
+    }
+  ]
+}

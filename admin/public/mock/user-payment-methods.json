@@ -1,0 +1,55 @@
+{
+  "paymentMethods": [
+    {
+      "id": "pm-001",
+      "userId": "507f1f77bcf86cd799439011",
+      "type": "credit_card",
+      "cardHolderName": "John Doe",
+      "cardNumber": "**** **** **** 1234",
+      "expiryMonth": 12,
+      "expiryYear": 2025,
+      "billingAddress": {
+        "address": "123 Main Street",
+        "city": "San Francisco",
+        "state": "CA",
+        "postalCode": "94102",
+        "country": "United States"
+      },
+      "isDefault": true
+    },
+    {
+      "id": "pm-002",
+      "userId": "507f1f77bcf86cd799439011",
+      "type": "credit_card",
+      "cardHolderName": "John Doe",
+      "cardNumber": "**** **** **** 5678",
+      "expiryMonth": 6,
+      "expiryYear": 2026,
+      "billingAddress": {
+        "address": "456 Tech Boulevard",
+        "city": "San Francisco",
+        "state": "CA",
+        "postalCode": "94105",
+        "country": "United States"
+      },
+      "isDefault": false
+    },
+    {
+      "id": "pm-003",
+      "userId": "507f1f77bcf86cd799439012",
+      "type": "credit_card",
+      "cardHolderName": "Jane Smith",
+      "cardNumber": "**** **** **** 9012",
+      "expiryMonth": 3,
+      "expiryYear": 2025,
+      "billingAddress": {
+        "address": "789 Oak Avenue",
+        "city": "New York",
+        "state": "NY",
+        "postalCode": "10001",
+        "country": "United States"
+      },
+      "isDefault": true
+    }
+  ]
+}
