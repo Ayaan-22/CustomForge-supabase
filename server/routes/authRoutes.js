@@ -40,15 +40,15 @@ router.post("/forgot-password", forgotPassword);
 router.post("/reset-password/:token", resetPassword);
 
 /* ============================
+   TOKEN REFRESH
+   ============================ */
+router.post("/refresh", refreshToken);
+
+/* ============================
    PROTECTED ROUTES – Must be logged in + verified email
    ============================ */
 router.use(protect);
 router.use(verifiedEmail);
-
-/* ============================
-   TOKEN REFRESH
-   ============================ */
-router.post("/refresh", refreshToken);
 
 /* ============================
    PASSWORD UPDATE (must have 2FA if enabled)

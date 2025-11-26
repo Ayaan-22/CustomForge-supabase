@@ -71,15 +71,18 @@ app.use(
   })
 );
 
+// allow admin frontend to call API and send cookies
+const ADMIN_URL = process.env.ADMIN_URL || process.env.CLIENT_URL || "http://localhost:3000";
+
 app.use(
   cors({
-    origin: [
-      process.env.CLIENT_URL || "http://localhost:3000",
-      "http://localhost:3001",
-    ],
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true); // allow non-browser requests (curl, server-side)
+      cb(null, ADMIN_URL);
+    },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   })
 );
 

@@ -1070,8 +1070,12 @@ export const createProduct = asyncHandler(async (req, res, next) => {
   }
 
   // Helper function to safely parse JSON
+  // Helper function to safely parse JSON
   const safeJSONParse = (str, defaultValue = null) => {
-    if (!str || str.trim() === "") return defaultValue;
+    if (str === null || str === undefined) return defaultValue;
+    if (typeof str === "object") return str; // Already parsed
+    if (typeof str !== "string") return defaultValue; // Should be string or object
+    if (str.trim() === "") return defaultValue;
     try {
       return JSON.parse(str);
     } catch (e) {
