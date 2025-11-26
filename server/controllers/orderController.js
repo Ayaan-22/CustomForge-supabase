@@ -665,20 +665,62 @@ export const getOrderById = asyncHandler(async (req, res, next) => {
 
 /**
  * GET /api/orders/my
- * Get current user's orders (with basic pagination)
+ * Get USER orders with advanced filtering + sorting + pagination
  */
 export const getMyOrders = asyncHandler(async (req, res, next) => {
   const userId = req.user.id;
+
+  logger.info("User fetching orders with filters", {
+    userId,
+    query: req.query,
+  });
+
+  // ---------------------------------------------
+  // 1. SANITIZE FILTERS
+  // ---------------------------------------------
+  const filters = {
+    status: req.query.status || null, // pending, paid, delivered, cancelled
+    isPaid:
+      typeof req.query.isPaid !== "undefined"
+        ? req.query.isPaid === "true"
+        : null,
+    isDelivered:
+      typeof req.query.isDelivered !== "undefined"
+        ? req.query.isDelivered === "true"
+        : null,
+    minTotal: req.query.minTotal ? Number(req.query.minTotal) : null,
+    maxTotal: req.query.maxTotal ? Number(req.query.maxTotal) : null,
+    createdFrom: req.query.createdFrom ? new Date(req.query.createdFrom) : null,
+    createdTo: req.query.createdTo ? new Date(req.query.createdTo) : null,
+    q: req.query.q ? req.query.q.trim() : null, // search by product name
+  };
+
+  // ---------------------------------------------
+  // 2. PAGINATION
+  // ---------------------------------------------
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const limit = Math.min(parseInt(req.query.limit, 10) || 10, 50);
   const from = (page - 1) * limit;
   const to = from + limit - 1;
 
-  const {
-    data: orders,
-    error,
-    count,
-  } = await supabase
+  // ---------------------------------------------
+  // 3. SORTING
+  // ---------------------------------------------
+  let sortRaw = req.query.sort || "-createdAt";
+  let ascending = !sortRaw.startsWith("-");
+  let sortField = sortRaw.replace(/^-/, "");
+
+  const sortMap = {
+    createdAt: "created_at",
+    totalPrice: "total_price",
+    status: "status",
+  };
+  sortField = sortMap[sortField] || "created_at";
+
+  // ---------------------------------------------
+  // 4. BUILD QUERY
+  // ---------------------------------------------
+  let query = supabase
     .from("orders")
     .select(
       `
@@ -688,35 +730,80 @@ export const getMyOrders = asyncHandler(async (req, res, next) => {
       is_paid,
       is_delivered,
       total_price,
-      items:order_items (
-        id,
-        product_id,
-        name,
-        image,
-        price,
-        quantity
-      )
-    `,
+      coupon_applied,
+      items:order_items (id, product_id, name, price, quantity, image)
+     `,
       { count: "exact" }
     )
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .range(from, to);
+    .eq("user_id", userId);
+
+  // ---------------------------------------------
+  // 5. APPLY FILTERS
+  // ---------------------------------------------
+  if (filters.status) query = query.eq("status", filters.status);
+
+  if (filters.isPaid !== null) query = query.eq("is_paid", filters.isPaid);
+
+  if (filters.isDelivered !== null)
+    query = query.eq("is_delivered", filters.isDelivered);
+
+  if (filters.minTotal !== null)
+    query = query.gte("total_price", filters.minTotal);
+
+  if (filters.maxTotal !== null)
+    query = query.lte("total_price", filters.maxTotal);
+
+  if (filters.createdFrom)
+    query = query.gte("created_at", filters.createdFrom.toISOString());
+
+  if (filters.createdTo)
+    query = query.lte("created_at", filters.createdTo.toISOString());
+
+  // ---------------------------------------------
+  // 6. EXECUTE BASE QUERY
+  // ---------------------------------------------
+  const {
+    data: rows,
+    error,
+    count,
+  } = await query.order(sortField, { ascending }).range(from, to);
 
   if (error) {
-    logger.error("Get my orders failed", {
+    logger.error("User orders fetch failed", {
       userId,
       error: error.message,
     });
-    return next(new AppError("Failed to fetch orders", 500));
+    return next(new AppError("Failed to fetch your orders", 500));
   }
 
+  // ---------------------------------------------
+  // 7. SEARCH FILTER: PRODUCT NAME
+  // ---------------------------------------------
+  let filteredOrders = rows;
+
+  if (filters.q) {
+    const search = filters.q.toLowerCase();
+
+    filteredOrders = rows.filter((ord) =>
+      ord.items?.some((item) => item.name?.toLowerCase().includes(search))
+    );
+  }
+
+  // ---------------------------------------------
+  // 8. RESPONSE
+  // ---------------------------------------------
   res.status(200).json({
     success: true,
-    count: count ?? orders.length,
     page,
     limit,
-    data: orders,
+    total: count ?? filteredOrders.length,
+    results: filteredOrders.length,
+    data: filteredOrders,
+  });
+
+  logger.info("User orders fetched successfully", {
+    userId,
+    results: filteredOrders.length,
   });
 });
 

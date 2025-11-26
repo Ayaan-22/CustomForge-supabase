@@ -25,9 +25,14 @@ create table if not exists users (
   two_factor_enabled boolean default false,
   two_factor_secret text,
   active boolean default true,
+  stripe_customer_id text,
+  payment_methods jsonb,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+-- Create index on stripe_customer_id for faster lookups
+create index if not exists idx_users_stripe_customer_id on users(stripe_customer_id);
 
 -- ===========================================
 -- USER ADDRESSES

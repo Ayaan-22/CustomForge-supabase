@@ -29,7 +29,7 @@ import { logger } from "../middleware/logger.js";
 =========================================================== */
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 100,
   message: "Too many login attempts, please try again later",
 });
 

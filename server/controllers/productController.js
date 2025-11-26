@@ -236,65 +236,114 @@ const mapReviewWithUser = (review, userLookup) => {
 // ============================================
 
 /**
- * @desc Get all products with filtering, sorting, pagination
+ * @desc Get all products with advanced filtering, sorting, pagination
  * @route GET /api/products
  * @access Public
  */
 export const getAllProducts = asyncHandler(async (req, res, next) => {
-  const sanitizedQuery = sanitizeQuery(req.query);
-
-  logger.info("Fetching products", {
+  logger.info("Fetching products (advanced filters)", {
     route: req.originalUrl,
     method: req.method,
-    query: Object.keys(sanitizedQuery),
   });
 
-  // Pagination
+  // ---------------------------------------------
+  // 1. SANITIZE QUERY
+  // ---------------------------------------------
+  const q = req.query.q ? validator.escape(req.query.q.trim()) : null;
+
+  const filters = {
+    category: req.query.category ? validator.escape(req.query.category) : null,
+    brand: req.query.brand ? validator.escape(req.query.brand) : null,
+    availability: req.query.availability
+      ? validator.escape(req.query.availability)
+      : null,
+    isFeatured:
+      typeof req.query.isFeatured !== "undefined"
+        ? req.query.isFeatured === "true"
+        : null,
+    isActive:
+      typeof req.query.isActive !== "undefined"
+        ? req.query.isActive === "true"
+        : true,
+    minPrice: req.query.minPrice ? Number(req.query.minPrice) : null,
+    maxPrice: req.query.maxPrice ? Number(req.query.maxPrice) : null,
+    minRating: req.query.minRating ? Number(req.query.minRating) : null,
+    maxRating: req.query.maxRating ? Number(req.query.maxRating) : null,
+    features: req.query.features
+      ? req.query.features.split(",").map((x) => validator.escape(x.trim()))
+      : null,
+  };
+
+  // ---------------------------------------------
+  // 2. PAGINATION
+  // ---------------------------------------------
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
   const from = (page - 1) * limit;
   const to = from + limit - 1;
 
-  // Sorting
-  const sortRaw = req.query.sort || "-created_at";
-  let sortField = "created_at";
-  let ascending = false;
+  // ---------------------------------------------
+  // 3. SORTING
+  // ---------------------------------------------
+  let sortRaw = req.query.sort || "-created_at";
+  let ascending = !sortRaw.startsWith("-");
+  let sortField = sortRaw.replace(/^-/, "");
 
-  if (typeof sortRaw === "string" && sortRaw.length > 0) {
-    ascending = !sortRaw.startsWith("-");
-    const clean = sortRaw.replace(/^-/, "");
-    if (clean === "finalPrice") sortField = "final_price";
-    else if (clean === "name") sortField = "name";
-    else if (clean === "createdAt") sortField = "created_at";
-    else sortField = clean;
-  }
+  const sortMap = {
+    finalPrice: "final_price",
+    name: "name",
+    createdAt: "created_at",
+    salesCount: "sales_count",
+  };
+  sortField = sortMap[sortField] || sortField;
 
-  // Build base query
+  // ---------------------------------------------
+  // 4. BUILD QUERY
+  // ---------------------------------------------
   let query = supabase
     .from("products")
-    .select(
-      "id, name, category, brand, sku, original_price, discount_percentage, final_price, images, ratings, stock, availability, is_active",
-      { count: "exact" }
-    )
-    .eq("is_active", true);
+    .select("*", { count: "exact" })
+    .eq("is_active", filters.isActive);
 
-  // Apply filters
-  if (sanitizedQuery.category) {
-    query = query.eq("category", sanitizedQuery.category);
-  }
-  if (sanitizedQuery.brand) {
-    query = query.eq("brand", sanitizedQuery.brand);
-  }
-  if (sanitizedQuery.availability) {
-    query = query.eq("availability", sanitizedQuery.availability);
-  }
-  if (sanitizedQuery.minPrice) {
-    query = query.gte("final_price", sanitizedQuery.minPrice);
-  }
-  if (sanitizedQuery.maxPrice) {
-    query = query.lte("final_price", sanitizedQuery.maxPrice);
+  // CATEGORY
+  if (filters.category) query = query.eq("category", filters.category);
+
+  // BRAND
+  if (filters.brand) query = query.eq("brand", filters.brand);
+
+  // AVAILABILITY
+  if (filters.availability)
+    query = query.eq("availability", filters.availability);
+
+  // FEATURED
+  if (filters.isFeatured !== null)
+    query = query.eq("is_featured", filters.isFeatured);
+
+  // PRICE RANGE
+  if (filters.minPrice !== null)
+    query = query.gte("final_price", filters.minPrice);
+
+  if (filters.maxPrice !== null)
+    query = query.lte("final_price", filters.maxPrice);
+
+  // SEARCH (name + description)
+  if (q && q.length >= 2) {
+    const pattern = `%${q}%`;
+    query = query.or(
+      `name.ilike.${pattern},description.ilike.${pattern},brand.ilike.${pattern}`
+    );
   }
 
+  // FEATURES (array-contains)
+  if (filters.features && filters.features.length > 0) {
+    filters.features.forEach((f) => {
+      query = query.contains("features", [f]);
+    });
+  }
+
+  // ---------------------------------------------
+  // 5. EXECUTE BASE QUERY
+  // ---------------------------------------------
   const {
     data: rows,
     error,
@@ -302,15 +351,18 @@ export const getAllProducts = asyncHandler(async (req, res, next) => {
   } = await query.order(sortField, { ascending }).range(from, to);
 
   if (error) {
-    logger.error("Error fetching products", { error: error.message });
+    logger.error("Failed to fetch products", { error: error.message });
     return next(new AppError("Failed to fetch products", 500));
   }
 
-  // Apply rating filters in JS
+  // ---------------------------------------------
+  // 6. POST-FILTER: RATING RANGE
+  // ---------------------------------------------
   let filtered = rows;
-  if (sanitizedQuery.minRating || sanitizedQuery.maxRating) {
-    const minR = sanitizedQuery.minRating || 0;
-    const maxR = sanitizedQuery.maxRating || 5;
+
+  if (filters.minRating !== null || filters.maxRating !== null) {
+    const minR = filters.minRating ?? 0;
+    const maxR = filters.maxRating ?? 5;
 
     filtered = rows.filter((p) => {
       const avg = p.ratings?.average ?? 0;
@@ -318,17 +370,22 @@ export const getAllProducts = asyncHandler(async (req, res, next) => {
     });
   }
 
-  const products = mapProducts(filtered);
+  const products = filtered.map(mapProduct);
 
+  // ---------------------------------------------
+  // 7. RESPONSE
+  // ---------------------------------------------
   res.status(200).json({
     success: true,
-    count: count ?? products.length,
+    page,
+    limit,
+    total: count ?? filtered.length,
     results: products.length,
     data: products,
   });
 
-  logger.info("Fetched products successfully", {
-    count: count ?? products.length,
+  logger.info("Products fetched successfully", {
+    total: count ?? filtered.length,
     results: products.length,
   });
 });
