@@ -1,87 +1,143 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { UserService } from "@/services/user-service"
-import type { Order } from "@/lib/types"
+import { useQuery } from "@tanstack/react-query";
+import { UserService } from "@/services/user-service";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle, Package } from "lucide-react";
+import { formatPrice } from "@/lib/format";
+import { formatDistanceToNow } from "date-fns";
+import Link from "next/link";
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<Order[]>([])
-  const [loading, setLoading] = useState(true)
+  const {
+    data: ordersResponse,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["orders"],
+    queryFn: () => UserService.orders(),
+  });
 
-  useEffect(() => {
-    UserService.orders().then((res) => {
-      if (res.data?.items) {
-        setOrders(res.data.items)
-      }
-      setLoading(false)
-    })
-  }, [])
+  const orders = ordersResponse?.data || [];
 
-  if (loading) {
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "delivered":
+        return "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400";
+      case "shipped":
+        return "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400";
+      case "paid":
+        return "bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400";
+      case "cancelled":
+      case "returned":
+        return "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400";
+      default:
+        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400";
+    }
+  };
+
+  if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-10 text-center">
-        <h1 className="font-heading text-2xl">Loading orders...</h1>
+      <div className="container mx-auto px-4 py-6">
+        <h1 className="font-heading text-3xl mb-6">My Orders</h1>
+        <div className="space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} className="h-32 w-full" />
+          ))}
+        </div>
       </div>
-    )
+    );
   }
 
-  if (orders.length === 0) {
+  if (error) {
     return (
-      <div className="container mx-auto px-4 py-10 text-center">
-        <h1 className="font-heading mb-4 text-2xl">No orders yet</h1>
-        <p className="mb-6 text-muted-foreground">Start shopping to see your orders here</p>
-        <Link href="/products">
-          <Button>Browse products</Button>
-        </Link>
+      <div className="container mx-auto px-4 py-6">
+        <h1 className="font-heading text-3xl mb-6">My Orders</h1>
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Failed to load orders. Please try again later.
+          </AlertDescription>
+        </Alert>
       </div>
-    )
+    );
   }
 
   return (
-    <div className="container mx-auto max-w-4xl px-4 py-6">
-      <h1 className="font-heading mb-6 text-2xl">My orders</h1>
-      <div className="space-y-4">
-        {orders.map((order) => (
-          <Card key={order.id} className="p-6">
-            <div className="flex items-start justify-between">
-              <div className="space-y-1">
-                <p className="font-semibold">Order #{order.id.slice(0, 8)}</p>
-                <p className="text-sm text-muted-foreground">
-                  {order.items.length} item{order.items.length !== 1 ? "s" : ""}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "N/A"}
-                </p>
-              </div>
-              <div className="text-right">
-                <Badge
-                  variant={
-                    order.status === "delivered"
-                      ? "default"
-                      : order.status === "cancelled"
-                        ? "destructive"
-                        : "secondary"
-                  }
-                >
-                  {order.status}
-                </Badge>
-                <p className="mt-2 font-semibold">${order.total?.toFixed(2) || "0.00"}</p>
-              </div>
-            </div>
-            <div className="mt-4">
-              <Link href={`/orders/${order.id}`}>
-                <Button variant="outline" size="sm">
-                  View details
-                </Button>
-              </Link>
-            </div>
-          </Card>
-        ))}
-      </div>
+    <div className="container mx-auto px-4 py-6">
+      <h1 className="font-heading text-3xl mb-6">My Orders</h1>
+
+      {orders.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <h3 className="font-semibold text-lg mb-2">No orders yet</h3>
+            <p className="text-muted-foreground mb-4">
+              Start shopping to see your orders here
+            </p>
+            <Link href="/products">
+              <Button>Browse Products</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {orders.map((order) => (
+            <Card key={order.id}>
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <div className="font-medium">
+                      Order #{order.id.slice(0, 8)}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {order.createdAt &&
+                        formatDistanceToNow(new Date(order.createdAt), {
+                          addSuffix: true,
+                        })}
+                    </div>
+                  </div>
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                      order.status
+                    )}`}
+                  >
+                    {order.status.charAt(0).toUpperCase() +
+                      order.status.slice(1)}
+                  </span>
+                </div>
+
+                <div className="space-y-2 mb-4">
+                  {order.items.map((item, index) => (
+                    <div key={index} className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        {item.name || `Item ${index + 1}`} × {item.quantity}
+                      </span>
+                      <span>
+                        {formatPrice((item.price || 0) * item.quantity)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between pt-4 border-t">
+                  <div className="font-semibold">
+                    Total: {formatPrice(order.total || 0)}
+                  </div>
+                  <Link href={`/orders/${order.id}`}>
+                    <Button variant="outline" size="sm">
+                      View Details
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
-  )
+  );
 }

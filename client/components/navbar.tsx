@@ -1,16 +1,16 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
 
-import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
-import { ShoppingCart, User, Heart, Search } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { useCart } from "@/hooks/use-cart"
-import { useState } from "react"
-import { cn } from "@/lib/utils"
-import useSWR from "swr"
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { ShoppingCart, User, Heart, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useCart } from "@/hooks/use-cart";
+import { useState } from "react";
+import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -18,56 +18,48 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuLabel,
-} from "@/components/ui/dropdown-menu"
-import { AuthService } from "@/services/auth-service"
+} from "@/components/ui/dropdown-menu";
 
 export function Navbar() {
-  const { count } = useCart()
-  const [q, setQ] = useState("")
-  const router = useRouter()
-  const pathname = usePathname()
+  const { count } = useCart();
+  const [q, setQ] = useState("");
+  const router = useRouter();
+  const pathname = usePathname();
+  const { user, logout } = useAuth();
 
   function submit(e: React.FormEvent) {
-    e.preventDefault()
-    router.push(`/search?q=${encodeURIComponent(q)}`)
-    setQ("")
+    e.preventDefault();
+    router.push(`/search?q=${encodeURIComponent(q)}`);
+    setQ("");
   }
 
-  const { data: me } = useSWR(
-    "/api/v1/users/me",
-    async (url) => {
-      const res = await fetch(url, { credentials: "include" })
-      if (!res.ok) throw new Error("unauthenticated")
-      return res.json()
-    },
-    { revalidateOnFocus: false, shouldRetryOnError: false },
-  )
-
   async function handleLogout() {
-    try {
-      await AuthService.logout()
-      router.refresh()
-      router.push("/")
-    } catch (err) {
-      // no-op: mock/local only
-    }
+    await logout();
   }
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex h-16 items-center justify-between gap-3 px-4">
         <Link href="/" className="flex items-center gap-2">
-          <span className={cn("text-xl font-heading", "tracking-wide")}>CustomForge</span>
+          <span className={cn("text-xl font-heading", "tracking-wide")}>
+            CustomForge
+          </span>
         </Link>
 
-        <form onSubmit={submit} className="hidden md:flex relative w-full max-w-xl items-center gap-2">
+        <form
+          onSubmit={submit}
+          className="hidden md:flex relative w-full max-w-xl items-center gap-2"
+        >
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search components, games, accessories..."
             className="pl-10"
           />
-          <Search className="absolute left-3 h-4 w-4 text-muted-foreground" aria-hidden />
+          <Search
+            className="absolute left-3 h-4 w-4 text-muted-foreground"
+            aria-hidden
+          />
         </form>
 
         <nav className="ml-auto flex items-center gap-2">
@@ -90,7 +82,9 @@ export function Navbar() {
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="gap-2 bg-transparent">
                 <User className="h-4 w-4" />
-                <span className="hidden sm:inline">{me?.user?.name ? me.user.name.split(" ")[0] : "Account"}</span>
+                <span className="hidden sm:inline">
+                  {user?.name ? user.name.split(" ")[0] : "Account"}
+                </span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -99,10 +93,10 @@ export function Navbar() {
               className="min-w-48 bg-popover/90 text-popover-foreground backdrop-blur supports-[backdrop-filter]:bg-popover/80 border border-border"
             >
               <DropdownMenuLabel className="text-xs text-muted-foreground">
-                {me?.user ? "Your account" : "Welcome to CustomForge"}
+                {user ? "Your account" : "Welcome to CustomForge"}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {me?.user ? (
+              {user ? (
                 <>
                   <DropdownMenuItem asChild>
                     <Link href="/profile">Profile</Link>
@@ -127,7 +121,9 @@ export function Navbar() {
                   <DropdownMenuItem asChild>
                     <Link href="/profile/security">Security & 2FA</Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleLogout}>
+                    Logout
+                  </DropdownMenuItem>
                 </>
               ) : (
                 <>
@@ -154,10 +150,13 @@ export function Navbar() {
               placeholder="Search CustomForge..."
               className="pl-10"
             />
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden />
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+              aria-hidden
+            />
           </form>
         </div>
       )}
     </header>
-  )
+  );
 }

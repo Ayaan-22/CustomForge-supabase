@@ -34,6 +34,10 @@ create table if not exists users (
 -- Create index on stripe_customer_id for faster lookups
 create index if not exists idx_users_stripe_customer_id on users(stripe_customer_id);
 
+-- Add comment to columns
+COMMENT ON COLUMN users.stripe_customer_id IS 'Stripe customer ID for payment processing';
+COMMENT ON COLUMN users.payment_methods IS 'Stored payment methods metadata (JSONB)';
+
 -- ===========================================
 -- USER ADDRESSES
 -- ===========================================
@@ -263,3 +267,56 @@ create table if not exists order_items (
   quantity int not null,
   price_snapshot numeric not null
 );
+
+-- ===========================================
+-- RPC FUNCTIONS (ATOMIC OPERATIONS)
+-- ===========================================
+
+-- 1. Atomic Stock Change
+-- Usage: select change_stock('product-uuid', -5);
+CREATE OR REPLACE FUNCTION change_stock(p_product_id UUID, p_delta INT)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE products
+  SET 
+    stock = stock + p_delta,
+    updated_at = NOW()
+  WHERE id = p_product_id;
+  
+  -- Ensure stock never goes negative
+  IF EXISTS (SELECT 1 FROM products WHERE id = p_product_id AND stock < 0) THEN
+    RAISE EXCEPTION 'Insufficient stock for product %', p_product_id;
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 2. Atomic Sales Increase
+-- Usage: select increase_sales('product-uuid', 2);
+CREATE OR REPLACE FUNCTION increase_sales(p_product_id UUID, p_qty INT)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE products
+  SET 
+    sales_count = sales_count + p_qty,
+    updated_at = NOW()
+  WHERE id = p_product_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 3. Atomic Coupon Usage Increment
+-- Usage: select increment_coupon_usage('coupon-uuid');
+CREATE OR REPLACE FUNCTION increment_coupon_usage(p_coupon_id UUID)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE coupons
+  SET 
+    times_used = times_used + 1,
+    updated_at = NOW()
+  WHERE id = p_coupon_id;
+  
+  -- Ensure usage limit not exceeded
+  IF EXISTS (SELECT 1 FROM coupons WHERE id = p_coupon_id AND usage_limit IS NOT NULL AND times_used > usage_limit) THEN
+    RAISE EXCEPTION 'Coupon usage limit exceeded';
+  END IF;
+END;
+$$ LANGUAGE plpgsql;

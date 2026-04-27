@@ -49,7 +49,7 @@ html
     .container
       h1 Order Confirmation
       p Hi #{firstName}, your order has been placed successfully!
-      p Order ID: #{order._id}
-      p Total: $#{order.totalPrice}
+      p Order ID: #{orderId || (order && (order.id || order._id)) || 'N/A'}
+      p Total: $#{totalPrice || (order && (order.total_price || order.totalPrice)) || '0.00'}
       p We'll notify you once it's shipped!
       a.button(href=url) Track Your Order

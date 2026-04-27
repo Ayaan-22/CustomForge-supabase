@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { setJSONCookie, ok } from "../../_utils"
 
 export async function POST(req: Request) {
   const body = await req.json()
@@ -9,7 +10,17 @@ export async function POST(req: Request) {
     role: "user",
     createdAt: new Date().toISOString(),
   }
-  const res = NextResponse.json({ user })
-  res.cookies.set({ name: "cf_user", value: JSON.stringify(user), path: "/", sameSite: "lax" })
-  return res
+  // Generate a mock token (in production, this would be a JWT from the backend)
+  const token = `mock_token_${crypto.randomUUID()}`
+  
+  // Use ok() helper and set cookie with proper maxAge
+  return ok(
+    { 
+      user,
+      token 
+    },
+    (res: NextResponse) => {
+      setJSONCookie(res, "cf_user", user, 7) // Set cookie with 7 days maxAge
+    }
+  )
 }

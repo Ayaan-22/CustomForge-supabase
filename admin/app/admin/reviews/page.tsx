@@ -339,6 +339,23 @@ export default function ReviewsPage() {
           review={selectedReview}
           open={showDetailsModal}
           onOpenChange={setShowDetailsModal}
+          onModerate={async (id, action) => {
+            try {
+              await apiClient.moderateReview(id, { action });
+              toast({
+                title: "Success",
+                description: `Review ${action}ed successfully`,
+              });
+              setShowDetailsModal(false);
+              fetchReviews();
+            } catch (error: any) {
+              toast({
+                title: "Error",
+                description: error.message || "Failed to moderate review",
+                variant: "destructive",
+              });
+            }
+          }}
         />
       )}
     </div>

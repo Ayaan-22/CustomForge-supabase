@@ -21,6 +21,7 @@ export const protect = asyncHandler(async (req, res, next) => {
     logger.warn("Unauthorized access attempt - no token", {
       route: req.originalUrl,
       ip: req.ip,
+      headers: req.headers, // Log headers to see what's being sent
     });
     return next(new AppError("Not logged in.", 401));
   }
@@ -30,7 +31,7 @@ export const protect = asyncHandler(async (req, res, next) => {
   try {
     decoded = verifyJWT(token);
   } catch (err) {
-    logger.error(`JWT verification failed: ${err.message}`);
+    logger.error(`JWT verification failed: ${err.message}`, { token }); // Log the token that failed
     return next(new AppError("Invalid or expired token.", 401));
   }
 

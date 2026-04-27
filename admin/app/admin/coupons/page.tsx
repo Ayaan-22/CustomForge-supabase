@@ -9,20 +9,23 @@ import { CouponModal } from "../components/coupon-modal";
 import { apiClient } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 
+// Frontend interface using camelCase (matches transformed API data)
 interface Coupon {
   id: string;
   code: string;
-  discount_type: "percentage" | "fixed";
-  discount_value: number;
-  valid_from: string;
-  valid_to: string;
-  min_purchase?: number;
-  max_discount?: number;
-  is_active: boolean;
-  created_at: string;
-  usage_limit?: number;
-  times_used?: number;
+  discountType: "percentage" | "fixed";
+  discountValue: number;
+  validFrom: string;
+  validTo: string;
+  minPurchase?: number;
+  maxDiscount?: number;
+  isActive: boolean;
+  createdAt: string;
+  usageLimit?: number;
+  timesUsed?: number;
 }
+
+
 
 export default function CouponsPage() {
   const { toast } = useToast();
@@ -65,8 +68,8 @@ export default function CouponsPage() {
     const matchesActive =
       activeFilter === "all" ||
       (activeFilter === "active"
-        ? coupon.is_active && !isExpired(coupon.valid_to)
-        : !coupon.is_active || isExpired(coupon.valid_to));
+        ? coupon.isActive && !isExpired(coupon.validTo)
+        : !coupon.isActive || isExpired(coupon.validTo));
     return matchesSearch && matchesActive;
   });
 
@@ -125,7 +128,7 @@ export default function CouponsPage() {
 
   const handleSubmitCoupon = async (couponData: any) => {
     try {
-      if (selectedCoupon) {
+      if (selectedCoupon && selectedCoupon.id) {
         await apiClient.updateCoupon(selectedCoupon.id, couponData);
         toast({ title: "Success", description: "Coupon updated successfully" });
       } else {
@@ -140,6 +143,7 @@ export default function CouponsPage() {
         description: error.message || "Failed to save coupon",
         variant: "destructive",
       });
+      throw error; // Re-throw to ensure error is properly handled
     }
   };
 
@@ -192,14 +196,14 @@ export default function CouponsPage() {
             </div>
           ) : (
             filteredCoupons.map((coupon) => {
-              const expired = isExpired(coupon.valid_to);
-              const expiringSoon = isExpiringSoon(coupon.valid_to);
+              const expired = isExpired(coupon.validTo);
+              const expiringSoon = isExpiringSoon(coupon.validTo);
 
               return (
                 <Card
                   key={coupon.id}
                   className={`glass-dark p-6 border-[#2A2A35] transition-all ${
-                    expired || !coupon.is_active
+                    expired || !coupon.isActive
                       ? "opacity-60"
                       : expiringSoon
                       ? "border-yellow-500/50"
@@ -233,11 +237,11 @@ export default function CouponsPage() {
                   {/* Discount */}
                   <div className="mb-4 p-3 bg-gradient-to-r from-[#7C3AED]/20 to-[#3B82F6]/20 rounded-lg">
                     <p className="text-2xl font-bold text-white">
-                      {coupon.discount_value}
-                      {coupon.discount_type === "percentage" ? "%" : "$"}
+                      {coupon.discountValue}
+                      {coupon.discountType === "percentage" ? "%" : "$"}
                     </p>
                     <p className="text-[#A0A0A8] text-sm">
-                      {coupon.discount_type === "percentage"
+                      {coupon.discountType === "percentage"
                         ? "Percentage Discount"
                         : "Fixed Discount"}
                     </p>
@@ -248,7 +252,7 @@ export default function CouponsPage() {
                     <div>
                       <p className="text-[#A0A0A8] text-xs">Valid From</p>
                       <p className="text-white text-sm">
-                        {formatDate(coupon.valid_from)}
+                        {formatDate(coupon.validFrom)}
                       </p>
                     </div>
                     <div>
@@ -262,25 +266,25 @@ export default function CouponsPage() {
                             : "text-white"
                         }`}
                       >
-                        {formatDate(coupon.valid_to)}
+                        {formatDate(coupon.validTo)}
                       </p>
                     </div>
                   </div>
 
                   <div className="space-y-2 mb-4 pb-4 border-b border-[#2A2A35]">
-                    {coupon.min_purchase && coupon.min_purchase > 0 && (
+                    {coupon.minPurchase && coupon.minPurchase > 0 && (
                       <div>
                         <p className="text-[#A0A0A8] text-xs">Min Purchase</p>
                         <p className="text-white text-sm">
-                          ${coupon.min_purchase}
+                          ${coupon.minPurchase}
                         </p>
                       </div>
                     )}
-                    {coupon.max_discount && (
+                    {coupon.maxDiscount && (
                       <div>
                         <p className="text-[#A0A0A8] text-xs">Max Discount</p>
                         <p className="text-white text-sm">
-                          ${coupon.max_discount}
+                          ${coupon.maxDiscount}
                         </p>
                       </div>
                     )}
@@ -294,7 +298,7 @@ export default function CouponsPage() {
                           ? "bg-red-500/20 text-red-400"
                           : expiringSoon
                           ? "bg-yellow-500/20 text-yellow-400"
-                          : !coupon.is_active
+                          : !coupon.isActive
                           ? "bg-gray-500/20 text-gray-400"
                           : "bg-green-500/20 text-green-400"
                       }`}
@@ -309,7 +313,7 @@ export default function CouponsPage() {
                           <AlertCircle className="w-3 h-3" />
                           Expiring Soon
                         </>
-                      ) : !coupon.is_active ? (
+                      ) : !coupon.isActive ? (
                         <>
                           <AlertCircle className="w-3 h-3" />
                           Inactive
@@ -361,7 +365,7 @@ export default function CouponsPage() {
           <p className="text-[#A0A0A8] text-sm font-medium">Active</p>
           <p className="text-2xl font-bold text-green-400 mt-2">
             {
-              coupons.filter((c) => c.is_active && !isExpired(c.valid_to))
+              coupons.filter((c) => c.isActive && !isExpired(c.validTo))
                 .length
             }
           </p>
@@ -369,13 +373,13 @@ export default function CouponsPage() {
         <Card className="glass-dark p-6 border-[#2A2A35]">
           <p className="text-[#A0A0A8] text-sm font-medium">Expired</p>
           <p className="text-2xl font-bold text-red-400 mt-2">
-            {coupons.filter((c) => isExpired(c.valid_to)).length}
+            {coupons.filter((c) => isExpired(c.validTo)).length}
           </p>
         </Card>
         <Card className="glass-dark p-6 border-[#2A2A35]">
           <p className="text-[#A0A0A8] text-sm font-medium">Inactive</p>
           <p className="text-2xl font-bold text-gray-400 mt-2">
-            {coupons.filter((c) => !c.is_active).length}
+            {coupons.filter((c) => !c.isActive).length}
           </p>
         </Card>
       </div>
@@ -417,14 +421,14 @@ export default function CouponsPage() {
                 <div>
                   <p className="text-[#A0A0A8] text-sm">Type</p>
                   <p className="text-white capitalize">
-                    {viewingCoupon.discount_type}
+                    {viewingCoupon.discountType}
                   </p>
                 </div>
                 <div>
                   <p className="text-[#A0A0A8] text-sm">Value</p>
                   <p className="text-white">
-                    {viewingCoupon.discount_value}
-                    {viewingCoupon.discount_type === "percentage" ? "%" : "$"}
+                    {viewingCoupon.discountValue}
+                    {viewingCoupon.discountType === "percentage" ? "%" : "$"}
                   </p>
                 </div>
               </div>
@@ -432,28 +436,28 @@ export default function CouponsPage() {
               <div>
                 <p className="text-[#A0A0A8] text-sm">Valid From</p>
                 <p className="text-white">
-                  {formatDate(viewingCoupon.valid_from)}
+                  {formatDate(viewingCoupon.validFrom)}
                 </p>
               </div>
 
               <div>
                 <p className="text-[#A0A0A8] text-sm">Valid To</p>
                 <p className="text-white">
-                  {formatDate(viewingCoupon.valid_to)}
+                  {formatDate(viewingCoupon.validTo)}
                 </p>
               </div>
 
-              {viewingCoupon.min_purchase && viewingCoupon.min_purchase > 0 && (
+              {viewingCoupon.minPurchase && viewingCoupon.minPurchase > 0 && (
                 <div>
                   <p className="text-[#A0A0A8] text-sm">Minimum Purchase</p>
-                  <p className="text-white">${viewingCoupon.min_purchase}</p>
+                  <p className="text-white">${viewingCoupon.minPurchase}</p>
                 </div>
               )}
 
-              {viewingCoupon.max_discount && (
+              {viewingCoupon.maxDiscount && (
                 <div>
                   <p className="text-[#A0A0A8] text-sm">Maximum Discount</p>
-                  <p className="text-white">${viewingCoupon.max_discount}</p>
+                  <p className="text-white">${viewingCoupon.maxDiscount}</p>
                 </div>
               )}
 
@@ -461,10 +465,10 @@ export default function CouponsPage() {
                 <p className="text-[#A0A0A8] text-sm">Status</p>
                 <p
                   className={`${
-                    viewingCoupon.is_active ? "text-green-400" : "text-gray-400"
+                    viewingCoupon.isActive ? "text-green-400" : "text-gray-400"
                   }`}
                 >
-                  {viewingCoupon.is_active ? "Active" : "Inactive"}
+                  {viewingCoupon.isActive ? "Active" : "Inactive"}
                 </p>
               </div>
 

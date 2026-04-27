@@ -1,11 +1,18 @@
-import { z } from "zod"
+import { z } from "zod";
 
 // ========================
 // Core Enums & Literals
 // ========================
 
-export const ROLES = ["user", "admin"] as const
-export const ORDER_STATUSES = ["pending", "paid", "shipped", "delivered", "cancelled", "returned"] as const
+export const ROLES = ["user", "admin"] as const;
+export const ORDER_STATUSES = [
+  "pending",
+  "paid",
+  "shipped",
+  "delivered",
+  "cancelled",
+  "returned",
+] as const;
 export const PAYMENT_STATUSES = [
   "requires_payment_method",
   "requires_confirmation",
@@ -13,10 +20,20 @@ export const PAYMENT_STATUSES = [
   "processing",
   "canceled",
   "failed",
-] as const
-export const AVAILABILITY_STATUSES = ["In Stock", "Out of Stock", "Preorder"] as const
-export const RETURN_STATUSES = ["none", "requested", "approved", "rejected", "completed"] as const
-export const ADDRESS_LABELS = ["Home", "Work", "Other"] as const
+] as const;
+export const AVAILABILITY_STATUSES = [
+  "In Stock",
+  "Out of Stock",
+  "Preorder",
+] as const;
+export const RETURN_STATUSES = [
+  "none",
+  "requested",
+  "approved",
+  "rejected",
+  "completed",
+] as const;
+export const ADDRESS_LABELS = ["Home", "Work", "Other"] as const;
 
 // ========================
 // User Schema
@@ -34,9 +51,9 @@ export const UserSchema = z.object({
   active: z.boolean().default(true),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
-})
+});
 
-export type User = z.infer<typeof UserSchema>
+export type User = z.infer<typeof UserSchema>;
 
 // ========================
 // Address Schema
@@ -54,9 +71,9 @@ export const AddressSchema = z.object({
   country: z.string().default("United States"),
   phoneNumber: z.string().min(1),
   isDefault: z.boolean().default(false),
-})
+});
 
-export type Address = z.infer<typeof AddressSchema>
+export type Address = z.infer<typeof AddressSchema>;
 
 // ========================
 // Payment Method Schema
@@ -72,9 +89,9 @@ export const PaymentMethodSchema = z.object({
   expiryYear: z.number().min(2024),
   billingAddress: z.record(z.unknown()).optional(),
   isDefault: z.boolean().default(false),
-})
+});
 
-export type PaymentMethod = z.infer<typeof PaymentMethodSchema>
+export type PaymentMethod = z.infer<typeof PaymentMethodSchema>;
 
 // ========================
 // Product Schema
@@ -83,12 +100,12 @@ export type PaymentMethod = z.infer<typeof PaymentMethodSchema>
 export const SpecificationSchema = z.object({
   key: z.string(),
   value: z.string(),
-})
+});
 
 export const RatingsSchema = z.object({
   average: z.number().min(0).max(5),
   totalReviews: z.number().min(0),
-})
+});
 
 export const ProductSchema = z.object({
   id: z.string().uuid(),
@@ -107,16 +124,18 @@ export const ProductSchema = z.object({
   features: z.string().array().optional(),
   warranty: z.string().default("1 year limited warranty"),
   weight: z.number().optional(),
-  dimensions: z.object({ length: z.number(), width: z.number(), height: z.number() }).optional(),
-  sku: z.string().unique("SKU must be unique"),
+  dimensions: z
+    .object({ length: z.number(), width: z.number(), height: z.number() })
+    .optional(),
+  sku: z.string().min(1),
   isActive: z.boolean().default(true),
   isFeatured: z.boolean().default(false),
   salesCount: z.number().min(0).default(0),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
-})
+});
 
-export type Product = z.infer<typeof ProductSchema>
+export type Product = z.infer<typeof ProductSchema>;
 
 // ========================
 // Review Schema
@@ -137,9 +156,9 @@ export const ReviewSchema = z.object({
   isActive: z.boolean().default(true),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
-})
+});
 
-export type Review = z.infer<typeof ReviewSchema>
+export type Review = z.infer<typeof ReviewSchema>;
 
 // ========================
 // Coupon Schema
@@ -147,7 +166,7 @@ export type Review = z.infer<typeof ReviewSchema>
 
 export const CouponSchema = z.object({
   id: z.string().uuid(),
-  code: z.string().min(1).unique("Coupon code must be unique"),
+  code: z.string().min(1),
   discountType: z.enum(["percentage", "fixed"]),
   discountValue: z.number().min(0),
   minPurchase: z.number().min(0).default(0),
@@ -162,9 +181,9 @@ export const CouponSchema = z.object({
   excludedProducts: z.string().uuid().array().optional(),
   description: z.string().optional(),
   createdAt: z.string().datetime(),
-})
+});
 
-export type Coupon = z.infer<typeof CouponSchema>
+export type Coupon = z.infer<typeof CouponSchema>;
 
 // ========================
 // Cart Schema
@@ -176,9 +195,9 @@ export const CartItemSchema = z.object({
   productId: z.string().uuid(),
   quantity: z.number().min(1),
   addedAt: z.string().datetime(),
-})
+});
 
-export type CartItem = z.infer<typeof CartItemSchema>
+export type CartItem = z.infer<typeof CartItemSchema>;
 
 export const CartSchema = z.object({
   id: z.string().uuid(),
@@ -187,9 +206,9 @@ export const CartSchema = z.object({
   items: CartItemSchema.array(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
-})
+});
 
-export type Cart = z.infer<typeof CartSchema>
+export type Cart = z.infer<typeof CartSchema>;
 
 // ========================
 // Order Schema
@@ -204,9 +223,9 @@ export const OrderItemSchema = z.object({
   price: z.number().min(0),
   quantity: z.number().min(1),
   priceSnapshot: z.number().min(0),
-})
+});
 
-export type OrderItem = z.infer<typeof OrderItemSchema>
+export type OrderItem = z.infer<typeof OrderItemSchema>;
 
 export const OrderSchema = z.object({
   id: z.string().uuid(),
@@ -231,9 +250,9 @@ export const OrderSchema = z.object({
   items: OrderItemSchema.array(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
-})
+});
 
-export type Order = z.infer<typeof OrderSchema>
+export type Order = z.infer<typeof OrderSchema>;
 
 // ========================
 // Wishlist Schema
@@ -243,6 +262,6 @@ export const WishlistItemSchema = z.object({
   id: z.string().uuid(),
   userId: z.string().uuid(),
   productId: z.string().uuid(),
-})
+});
 
-export type WishlistItem = z.infer<typeof WishlistItemSchema>
+export type WishlistItem = z.infer<typeof WishlistItemSchema>;

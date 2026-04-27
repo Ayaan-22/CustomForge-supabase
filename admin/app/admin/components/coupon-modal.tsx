@@ -16,16 +16,16 @@ import { AlertCircle } from "lucide-react";
 interface Coupon {
   id?: string;
   code: string;
-  discount_type: "percentage" | "fixed";
-  discount_value: number;
-  valid_from: string;
-  valid_to: string;
-  min_purchase?: number;
-  max_discount?: number;
-  is_active: boolean;
-  created_at?: string;
-  usage_limit?: number;
-  times_used?: number;
+  discountType: "percentage" | "fixed";
+  discountValue: number;
+  validFrom: string;
+  validTo: string;
+  minPurchase?: number;
+  maxDiscount?: number;
+  isActive: boolean;
+  createdAt?: string;
+  usageLimit?: number;
+  timesUsed?: number;
 }
 
 interface CouponModalProps {
@@ -43,15 +43,15 @@ export function CouponModal({
 }: CouponModalProps) {
   const [formData, setFormData] = useState<Coupon>({
     code: "",
-    discount_type: "percentage",
-    discount_value: 0,
-    valid_from: new Date().toISOString().split("T")[0],
-    valid_to: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    discountType: "percentage",
+    discountValue: 0,
+    validFrom: new Date().toISOString().split("T")[0],
+    validTo: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
       .toISOString()
       .split("T")[0],
-    min_purchase: 0,
-    max_discount: undefined,
-    is_active: true,
+    minPurchase: 0,
+    maxDiscount: undefined,
+    isActive: true,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -74,21 +74,21 @@ export function CouponModal({
 
       setFormData({
         ...initialData,
-        valid_from: safeDate(initialData.valid_from, today),
-        valid_to: safeDate(initialData.valid_to, defaultEnd),
+        validFrom: safeDate(initialData.validFrom, today),
+        validTo: safeDate(initialData.validTo, defaultEnd),
       });
     } else {
       setFormData({
         code: "",
-        discount_type: "percentage",
-        discount_value: 0,
-        valid_from: new Date().toISOString().split("T")[0],
-        valid_to: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        discountType: "percentage",
+        discountValue: 0,
+        validFrom: new Date().toISOString().split("T")[0],
+        validTo: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
           .toISOString()
           .split("T")[0],
-        min_purchase: 0,
-        max_discount: undefined,
-        is_active: true,
+        minPurchase: 0,
+        maxDiscount: undefined,
+        isActive: true,
       });
     }
     setErrors({});
@@ -103,30 +103,30 @@ export function CouponModal({
       newErrors.code = "Code must be at least 3 characters";
     }
 
-    if (formData.discount_value <= 0) {
-      newErrors.discount_value = "Discount value must be greater than 0";
+    if (formData.discountValue <= 0) {
+      newErrors.discountValue = "Discount value must be greater than 0";
     }
 
     if (
-      formData.discount_type === "percentage" &&
-      formData.discount_value > 100
+      formData.discountType === "percentage" &&
+      formData.discountValue > 100
     ) {
-      newErrors.discount_value = "Percentage discount cannot exceed 100%";
+      newErrors.discountValue = "Percentage discount cannot exceed 100%";
     }
 
-    const validFrom = new Date(formData.valid_from);
-    const validTo = new Date(formData.valid_to);
+    const validFrom = new Date(formData.validFrom);
+    const validTo = new Date(formData.validTo);
 
     if (validTo <= validFrom) {
-      newErrors.valid_to = "Valid to date must be after valid from date";
+      newErrors.validTo = "Valid to date must be after valid from date";
     }
 
-    if (formData.min_purchase && formData.min_purchase < 0) {
-      newErrors.min_purchase = "Minimum purchase cannot be negative";
+    if (formData.minPurchase && formData.minPurchase < 0) {
+      newErrors.minPurchase = "Minimum purchase cannot be negative";
     }
 
-    if (formData.max_discount && formData.max_discount < 0) {
-      newErrors.max_discount = "Maximum discount cannot be negative";
+    if (formData.maxDiscount && formData.maxDiscount < 0) {
+      newErrors.maxDiscount = "Maximum discount cannot be negative";
     }
 
     setErrors(newErrors);
@@ -139,8 +139,8 @@ export function CouponModal({
       onSubmit({
         ...formData,
         code: formData.code.toUpperCase(),
-        valid_from: new Date(formData.valid_from).toISOString(),
-        valid_to: new Date(formData.valid_to).toISOString(),
+        validFrom: new Date(formData.validFrom).toISOString(),
+        validTo: new Date(formData.validTo).toISOString(),
       });
       onClose();
     }
@@ -185,11 +185,11 @@ export function CouponModal({
               Discount Type
             </label>
             <select
-              value={formData.discount_type}
+              value={formData.discountType}
               onChange={(e) =>
                 setFormData({
                   ...formData,
-                  discount_type: e.target.value as "percentage" | "fixed",
+                  discountType: e.target.value as "percentage" | "fixed",
                 })
               }
               className="w-full px-3 py-2 bg-[#2A2A35] border border-[#3A3A45] text-white rounded-lg"
@@ -206,11 +206,11 @@ export function CouponModal({
             </label>
             <Input
               type="number"
-              value={formData.discount_value}
+              value={formData.discountValue}
               onChange={(e) =>
                 setFormData({
                   ...formData,
-                  discount_value: Number.parseFloat(e.target.value) || 0,
+                  discountValue: Number.parseFloat(e.target.value) || 0,
                 })
               }
               placeholder="0"
@@ -218,10 +218,10 @@ export function CouponModal({
               step="0.01"
               className="bg-[#2A2A35] border-[#3A3A45] text-white placeholder:text-[#6A6A78]"
             />
-            {errors.discount_value && (
+            {errors.discountValue && (
               <p className="text-red-400 text-sm mt-1 flex items-center gap-1">
                 <AlertCircle className="w-3 h-3" />
-                {errors.discount_value}
+                {errors.discountValue}
               </p>
             )}
           </div>
@@ -233,9 +233,9 @@ export function CouponModal({
             </label>
             <Input
               type="date"
-              value={formData.valid_from}
+              value={formData.validFrom}
               onChange={(e) =>
-                setFormData({ ...formData, valid_from: e.target.value })
+                setFormData({ ...formData, validFrom: e.target.value })
               }
               className="bg-[#2A2A35] border-[#3A3A45] text-white"
             />
@@ -248,16 +248,16 @@ export function CouponModal({
             </label>
             <Input
               type="date"
-              value={formData.valid_to}
+              value={formData.validTo}
               onChange={(e) =>
-                setFormData({ ...formData, valid_to: e.target.value })
+                setFormData({ ...formData, validTo: e.target.value })
               }
               className="bg-[#2A2A35] border-[#3A3A45] text-white"
             />
-            {errors.valid_to && (
+            {errors.validTo && (
               <p className="text-red-400 text-sm mt-1 flex items-center gap-1">
                 <AlertCircle className="w-3 h-3" />
-                {errors.valid_to}
+                {errors.validTo}
               </p>
             )}
           </div>
@@ -269,11 +269,11 @@ export function CouponModal({
             </label>
             <Input
               type="number"
-              value={formData.min_purchase ?? ""}
+              value={formData.minPurchase ?? ""}
               onChange={(e) =>
                 setFormData({
                   ...formData,
-                  min_purchase: e.target.value
+                  minPurchase: e.target.value
                     ? Number.parseFloat(e.target.value)
                     : undefined,
                 })
@@ -283,10 +283,10 @@ export function CouponModal({
               step="0.01"
               className="bg-[#2A2A35] border-[#3A3A45] text-white placeholder:text-[#6A6A78]"
             />
-            {errors.min_purchase && (
+            {errors.minPurchase && (
               <p className="text-red-400 text-sm mt-1 flex items-center gap-1">
                 <AlertCircle className="w-3 h-3" />
-                {errors.min_purchase}
+                {errors.minPurchase}
               </p>
             )}
           </div>
@@ -298,11 +298,11 @@ export function CouponModal({
             </label>
             <Input
               type="number"
-              value={formData.max_discount ?? ""}
+              value={formData.maxDiscount ?? ""}
               onChange={(e) =>
                 setFormData({
                   ...formData,
-                  max_discount: e.target.value
+                  maxDiscount: e.target.value
                     ? Number.parseFloat(e.target.value)
                     : undefined,
                 })
@@ -312,10 +312,10 @@ export function CouponModal({
               step="0.01"
               className="bg-[#2A2A35] border-[#3A3A45] text-white placeholder:text-[#6A6A78]"
             />
-            {errors.max_discount && (
+            {errors.maxDiscount && (
               <p className="text-red-400 text-sm mt-1 flex items-center gap-1">
                 <AlertCircle className="w-3 h-3" />
-                {errors.max_discount}
+                {errors.maxDiscount}
               </p>
             )}
           </div>
@@ -325,9 +325,9 @@ export function CouponModal({
             <input
               type="checkbox"
               id="isActive"
-              checked={formData.is_active}
+              checked={formData.isActive}
               onChange={(e) =>
-                setFormData({ ...formData, is_active: e.target.checked })
+                setFormData({ ...formData, isActive: e.target.checked })
               }
               className="w-4 h-4 rounded"
             />

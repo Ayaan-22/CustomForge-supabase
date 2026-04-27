@@ -1,61 +1,66 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { useParams, notFound } from "next/navigation"
-import type { Product } from "@/lib/types"
-import { ProductGallery } from "@/components/product-gallery"
-import { RatingStars } from "@/components/rating-stars"
-import { finalPrice, formatPrice } from "@/lib/format"
-import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
-import { ProductCard } from "@/components/product-card"
-import { apiFetch } from "@/lib/apiClient"
-import { useCart } from "@/hooks/use-cart"
-import { useWishlist } from "@/hooks/use-wishlist"
-import { Heart, ShoppingCart, Check } from "lucide-react"
+import { useEffect, useState } from "react";
+import { useParams, notFound } from "next/navigation";
+import type { Product } from "@/lib/types";
+import { ProductGallery } from "@/components/product-gallery";
+import { RatingStars } from "@/components/rating-stars";
+import { finalPrice, formatPrice } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ProductCard } from "@/components/product-card";
+import { apiFetch } from "@/lib/apiClient";
+import { useCart } from "@/hooks/use-cart";
+import { useIsInWishlist, useToggleWishlist } from "@/hooks/use-wishlist";
+import { Heart, ShoppingCart, Check } from "lucide-react";
+import { toast } from "sonner";
 
 export default function ProductPage() {
-  const params = useParams()
-  const id = params.id as string
-  const [product, setProduct] = useState<Product | null>(null)
-  const [related, setRelated] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
-  const [notFoundState, setNotFoundState] = useState(false)
-  const { addItem: addToCart } = useCart()
-  const { items: wishlistItems, addItem: addToWishlist, removeItem: removeFromWishlist } = useWishlist()
-  const [addedToCart, setAddedToCart] = useState(false)
-
-  const isInWishlist = wishlistItems.some((item) => item.id === id)
+  const params = useParams();
+  const id = params.id as string;
+  const [product, setProduct] = useState<Product | null>(null);
+  const [related, setRelated] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [notFoundState, setNotFoundState] = useState(false);
+  const { addItem: addToCart } = useCart();
+  const isInWishlist = useIsInWishlist(id);
+  const { toggle: toggleWishlist, isLoading: wishlistLoading } =
+    useToggleWishlist();
+  const [addedToCart, setAddedToCart] = useState(false);
 
   useEffect(() => {
     async function loadProduct() {
-      setLoading(true)
-      console.log("[v0] ProductPage: Fetching product", id)
-      const res = await apiFetch<{ item: Product }>(`/products/${id}`)
-      console.log("[v0] ProductPage: Response:", res)
+      setLoading(true);
+      console.log("[v0] ProductPage: Fetching product", id);
+      const res = await apiFetch<Product>(`/products/${id}`);
+      console.log("[v0] ProductPage: Response:", res);
 
-      if (res.error || !res.data?.item) {
-        setNotFoundState(true)
-        setLoading(false)
-        return
+      if (res.error || !res.data) {
+        setNotFoundState(true);
+        setLoading(false);
+        return;
       }
 
-      const prod = res.data.item
-      setProduct(prod)
+      const prod = res.data;
+      console.log("[v0] Product data:", prod);
+      console.log("[v0] Specifications:", prod.specifications);
+      console.log("[v0] Features:", prod.features);
+      console.log("[v0] All product keys:", Object.keys(prod));
+      setProduct(prod);
 
       // Load related products
-      const relRes = await apiFetch<{ items: Product[] }>(`/products/${id}/related`)
-      if (relRes.data?.items) {
-        setRelated(relRes.data.items)
+      const relRes = await apiFetch<Product[]>(`/products/${id}/related`);
+      if (relRes.data) {
+        setRelated(relRes.data);
       }
 
-      setLoading(false)
+      setLoading(false);
     }
-    loadProduct()
-  }, [id])
+    loadProduct();
+  }, [id]);
 
   if (notFoundState) {
-    return notFound()
+    return notFound();
   }
 
   if (loading) {
@@ -71,26 +76,29 @@ export default function ProductPage() {
           </div>
         </div>
       </div>
-    )
+    );
   }
 
-  if (!product) return null
+  if (!product) return null;
 
-  const price = finalPrice(product.originalPrice, product.discountPercentage)
+  const price = finalPrice(product.originalPrice, product.discountPercentage);
 
   const handleAddToCart = () => {
-    addToCart(product)
-    setAddedToCart(true)
-    setTimeout(() => setAddedToCart(false), 2000)
-  }
+    addToCart(product);
+    setAddedToCart(true);
+    setTimeout(() => setAddedToCart(false), 2000);
+  };
 
-  const handleWishlistToggle = () => {
-    if (isInWishlist) {
-      removeFromWishlist(product.id)
-    } else {
-      addToWishlist(product)
+  const handleWishlistToggle = async () => {
+    try {
+      await toggleWishlist(id, isInWishlist);
+      toast.success(
+        isInWishlist ? "Removed from wishlist" : "Added to wishlist"
+      );
+    } catch (error) {
+      toast.error("Failed to update wishlist");
     }
-  }
+  };
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -104,22 +112,49 @@ export default function ProductPage() {
           <div className="mt-3 flex items-center justify-between">
             <RatingStars value={product.ratings?.average ?? 0} />
             <div className="text-right">
-              <div className="text-3xl font-semibold text-primary">{formatPrice(price)}</div>
+              <div className="text-3xl font-semibold text-primary">
+                {formatPrice(price)}
+              </div>
               {product.discountPercentage ? (
-                <div className="text-sm text-muted-foreground line-through">{formatPrice(product.originalPrice)}</div>
+                <div className="text-sm text-muted-foreground line-through">
+                  {formatPrice(product.originalPrice)}
+                </div>
               ) : null}
             </div>
           </div>
 
-          <div className="mt-4">
-            <span className="rounded border px-2 py-1 text-sm">{product.availability || "In Stock"}</span>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span className="rounded border px-3 py-1 text-sm font-medium">
+              {product.availability || "In Stock"}
+            </span>
+            {product.stock !== undefined && (
+              <span className="rounded border px-3 py-1 text-sm text-muted-foreground">
+                Stock: {product.stock} units
+              </span>
+            )}
             {product.warranty && (
-              <span className="ml-2 text-sm text-muted-foreground">Warranty: {product.warranty}</span>
+              <span className="rounded border px-3 py-1 text-sm text-muted-foreground">
+                Warranty: {product.warranty}
+              </span>
+            )}
+            {product.weight && (
+              <span className="rounded border px-3 py-1 text-sm text-muted-foreground">
+                Weight: {product.weight}kg
+              </span>
+            )}
+            {product.ratings?.totalReviews > 0 && (
+              <span className="rounded border px-3 py-1 text-sm text-muted-foreground">
+                {product.ratings.totalReviews} reviews
+              </span>
             )}
           </div>
 
           <div className="mt-6 flex gap-3">
-            <Button onClick={handleAddToCart} disabled={product.availability === "Out of Stock"} className="flex-1">
+            <Button
+              onClick={handleAddToCart}
+              disabled={product.availability === "Out of Stock"}
+              className="flex-1"
+            >
               {addedToCart ? (
                 <>
                   <Check className="mr-2 h-4 w-4" /> Added!
@@ -130,8 +165,16 @@ export default function ProductPage() {
                 </>
               )}
             </Button>
-            <Button variant="secondary" onClick={handleWishlistToggle}>
-              <Heart className={`h-4 w-4 ${isInWishlist ? "fill-current text-red-500" : ""}`} />
+            <Button
+              variant="secondary"
+              onClick={handleWishlistToggle}
+              disabled={wishlistLoading}
+            >
+              <Heart
+                className={`h-4 w-4 ${
+                  isInWishlist ? "fill-current text-red-500" : ""
+                }`}
+              />
             </Button>
           </div>
 
@@ -139,7 +182,8 @@ export default function ProductPage() {
             <div>
               <h2 className="font-heading text-xl">Description</h2>
               <p className="mt-2 text-sm text-muted-foreground">
-                {product.description || "High-performance component for gamers and creators."}
+                {product.description ||
+                  "High-performance component for gamers and creators."}
               </p>
             </div>
             {product.specifications && product.specifications.length > 0 && (
@@ -147,7 +191,10 @@ export default function ProductPage() {
                 <h2 className="font-heading text-xl">Specifications</h2>
                 <ul className="mt-2 grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
                   {product.specifications.map((s) => (
-                    <li key={s.key} className="flex items-center justify-between rounded-md border bg-card/60 p-2">
+                    <li
+                      key={s.key}
+                      className="flex items-center justify-between rounded-md border bg-card/60 p-2"
+                    >
                       <span className="text-muted-foreground">{s.key}</span>
                       <span>{s.value}</span>
                     </li>
@@ -165,6 +212,37 @@ export default function ProductPage() {
                 </ul>
               </div>
             )}
+            {product.dimensions && (
+              <div>
+                <h2 className="font-heading text-xl">Dimensions</h2>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-sm">
+                  {product.dimensions.length && (
+                    <div className="rounded-md border bg-card/60 p-2">
+                      <span className="text-muted-foreground">Length:</span>{" "}
+                      <span className="font-medium">
+                        {product.dimensions.length}cm
+                      </span>
+                    </div>
+                  )}
+                  {product.dimensions.width && (
+                    <div className="rounded-md border bg-card/60 p-2">
+                      <span className="text-muted-foreground">Width:</span>{" "}
+                      <span className="font-medium">
+                        {product.dimensions.width}cm
+                      </span>
+                    </div>
+                  )}
+                  {product.dimensions.height && (
+                    <div className="rounded-md border bg-card/60 p-2">
+                      <span className="text-muted-foreground">Height:</span>{" "}
+                      <span className="font-medium">
+                        {product.dimensions.height}cm
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -180,5 +258,5 @@ export default function ProductPage() {
         </section>
       )}
     </div>
-  )
+  );
 }

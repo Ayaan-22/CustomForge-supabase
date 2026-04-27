@@ -121,6 +121,7 @@ const loadCartWithDetails = async (userId) => {
           id,
           name,
           images,
+          original_price,
           final_price,
           stock,
           is_active
@@ -178,7 +179,8 @@ const computeCartTotals = (cart) => {
       continue;
     }
 
-    const unitPrice = Number(product.final_price || 0);
+    // Use final_price if available, otherwise fall back to original_price
+    const unitPrice = Number(product.final_price ?? product.original_price ?? 0);
     const lineTotal = unitPrice * qty;
 
     items.push({
@@ -297,7 +299,7 @@ export const addToCart = asyncHandler(async (req, res, next) => {
     // 1) Ensure product exists & active
     const { data: product, error: productError } = await supabase
       .from("products")
-      .select("id, final_price, images, stock, is_active, name")
+      .select("id, original_price, final_price, images, stock, is_active, name")
       .eq("id", productId)
       .single();
 

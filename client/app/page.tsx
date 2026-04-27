@@ -1,36 +1,42 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { CategoryCard } from "@/components/category-card"
-import { ProductCard } from "@/components/product-card"
-import { Skeleton } from "@/components/ui/skeleton"
-import type { Product } from "@/lib/types"
-import { apiFetch } from "@/lib/apiClient"
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { CategoryCard } from "@/components/category-card";
+import { ProductCard } from "@/components/product-card";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { Product } from "@/lib/types";
+import { apiFetch } from "@/lib/apiClient";
 
 export default function HomePage() {
-  const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadProducts() {
-      console.log("[v0] HomePage: Fetching products...")
-      const res = await apiFetch<{ items: Product[] }>("/products")
-      console.log("[v0] HomePage: Response:", res)
-      if (res.data?.items) {
-        setProducts(res.data.items)
+      console.log("[v0] HomePage: Fetching products...");
+      const res = await apiFetch<Product[]>("/products");
+      console.log("[v0] HomePage: Response:", res);
+      if (res.data) {
+        setProducts(res.data);
       }
-      setLoading(false)
+      setLoading(false);
     }
-    loadProducts()
-  }, [])
+    loadProducts();
+  }, []);
 
-  const featured = products.filter((p) => p.isFeatured).slice(0, 8)
+  const featured = products.filter((p) => p.isFeatured).slice(0, 8);
   const newArrivals = [...products]
-    .sort((a, b) => new Date(b.createdAt || "").getTime() - new Date(a.createdAt || "").getTime())
-    .slice(0, 8)
-  const bestSellers = [...products].sort((a, b) => (b.salesCount || 0) - (a.salesCount || 0)).slice(0, 8)
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt || "").getTime() -
+        new Date(a.createdAt || "").getTime()
+    )
+    .slice(0, 8);
+  const bestSellers = [...products]
+    .sort((a, b) => (b.salesCount || 0) - (a.salesCount || 0))
+    .slice(0, 8);
 
   return (
     <div className="space-y-12">
@@ -38,9 +44,12 @@ export default function HomePage() {
       <section className="relative">
         <div className="container mx-auto grid items-center gap-6 px-4 py-12 md:grid-cols-2">
           <div>
-            <h1 className="font-heading text-balance text-4xl md:text-5xl">Forge Your Ultimate Rig</h1>
+            <h1 className="font-heading text-balance text-4xl md:text-5xl">
+              Forge Your Ultimate Rig
+            </h1>
             <p className="mt-3 text-muted-foreground">
-              Premium GPUs, CPUs, peripherals, and software curated for peak performance.
+              Premium GPUs, CPUs, peripherals, and software curated for peak
+              performance.
             </p>
             <div className="mt-6 flex gap-3">
               <Link href="/products">
@@ -66,10 +75,26 @@ export default function HomePage() {
       <section className="container mx-auto px-4">
         <h2 className="font-heading text-2xl">Top Categories</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-4">
-          <CategoryCard name="GPUs" href="/products?category=GPU" image="/graphics-card-gpu.jpg" />
-          <CategoryCard name="CPUs" href="/products?category=CPU" image="/processor-cpu-chip.jpg" />
-          <CategoryCard name="Peripherals" href="/products?category=Peripherals" image="/gaming-keyboard-mouse.jpg" />
-          <CategoryCard name="Storage" href="/products?category=Storage" image="/ssd-nvme-storage.jpg" />
+          <CategoryCard
+            name="GPUs"
+            href="/products?category=GPU"
+            image="/graphics-card-gpu.jpg"
+          />
+          <CategoryCard
+            name="CPUs"
+            href="/products?category=CPU"
+            image="/processor-cpu-chip.jpg"
+          />
+          <CategoryCard
+            name="Peripherals"
+            href="/products?category=Peripherals"
+            image="/gaming-keyboard-mouse.jpg"
+          />
+          <CategoryCard
+            name="Storage"
+            href="/products?category=Storage"
+            image="/ssd-nvme-storage.jpg"
+          />
         </div>
       </section>
 
@@ -126,5 +151,5 @@ export default function HomePage() {
         </div>
       </section>
     </div>
-  )
+  );
 }

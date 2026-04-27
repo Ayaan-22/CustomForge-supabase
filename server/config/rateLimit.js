@@ -18,17 +18,17 @@ const parseEnvInt = (key, fallback) => {
 
 // Generic API limiter settings
 const WINDOW_MS_API = parseEnvInt("RATE_LIMIT_WINDOW_MS", 15 * 60 * 1000);
-const MAX_API_REQ = parseEnvInt("RATE_LIMIT_MAX", 100);
+const MAX_API_REQ = parseEnvInt("RATE_LIMIT_MAX", 300);
 
 // Specialized limiters (override via .env if needed)
 const WINDOW_MS_AUTH = parseEnvInt("RATE_AUTH_WINDOW_MS", WINDOW_MS_API);
-const MAX_AUTH_ATTEMPTS = parseEnvInt("RATE_AUTH_MAX", 10);
+const MAX_AUTH_ATTEMPTS = parseEnvInt("RATE_AUTH_MAX", 20);
 
 const WINDOW_MS_PAYMENT = parseEnvInt("RATE_PAYMENT_WINDOW_MS", WINDOW_MS_API);
-const MAX_PAYMENT_ATTEMPTS = parseEnvInt("RATE_PAYMENT_MAX", 5);
+const MAX_PAYMENT_ATTEMPTS = parseEnvInt("RATE_PAYMENT_MAX", 10);
 
 const WINDOW_MS_ADMIN = parseEnvInt("RATE_ADMIN_WINDOW_MS", WINDOW_MS_API);
-const MAX_ADMIN_REQ = parseEnvInt("RATE_ADMIN_MAX", 50);
+const MAX_ADMIN_REQ = parseEnvInt("RATE_ADMIN_MAX", 500);
 
 const WINDOW_MS_PUBLIC = parseEnvInt("RATE_PUBLIC_WINDOW_MS", WINDOW_MS_API);
 const MAX_PUBLIC_REQ = parseEnvInt("RATE_PUBLIC_MAX", 300);
@@ -46,6 +46,16 @@ const buildLimiter = ({ windowMs, max, message, tag }) =>
     message,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req, res) => {
+      if (process.env.RATE_LIMIT_ENABLED === "false") return true;
+      if (
+        process.env.NODE_ENV === "development" ||
+        process.env.NODE_ENV === "test"
+      ) {
+        return true;
+      }
+      return false;
+    },
     handler: (req, res, _next, options) => {
       const retryAfterSec = Math.ceil(windowMs / 1000);
 

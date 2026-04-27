@@ -18,6 +18,7 @@ import {
 } from "../models/User.js";
 
 import { getUserOrders as fetchUserOrders } from "../models/Order.js";
+import { mapOrderToFrontend } from "../utils/orderTransform.js";
 
 import { supabase } from "../config/db.js";
 
@@ -211,18 +212,21 @@ export const getUserOrders = asyncHandler(async (req, res, next) => {
     limit: parseInt(req.query.limit, 10) || 10,
   });
 
+  // Transform orders to frontend format
+  const transformedOrders = result.orders.map(mapOrderToFrontend);
+
   res.status(200).json({
     success: true,
-    results: result.orders.length,
+    results: transformedOrders.length,
     count: result.total,
     page: result.page,
     limit: result.limit,
-    data: result.orders,
+    data: transformedOrders,
   });
 
   logger.info("Fetched user orders", {
     userId: req.user.id,
-    results: result.orders.length,
+    results: transformedOrders.length,
   });
 });
 
@@ -422,9 +426,26 @@ export const updateUserAddress = asyncHandler(async (req, res, next) => {
     return next(new AppError("Failed to update address", 500));
   }
 
+  // Transform address to frontend format
+  const addressParts = updated.address?.split(", ") || [updated.address || ""];
+  const transformedAddress = {
+    id: updated.id,
+    fullName: updated.full_name,
+    phoneNumber: updated.phone_number,
+    line1: addressParts[0] || "",
+    line2: addressParts[1] || "",
+    address: updated.address,
+    city: updated.city,
+    state: updated.state,
+    postalCode: updated.postal_code,
+    country: updated.country,
+    isDefault: updated.is_default,
+    label: updated.label,
+  };
+
   res.status(200).json({
     success: true,
-    data: updated,
+    data: transformedAddress,
   });
 
   logger.info("Updated user address", { userId: req.user.id, addressId });

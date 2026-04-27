@@ -1,15 +1,18 @@
-"use client"
+"use client";
 
-import { useSearchParams } from "next/navigation"
-import useSWR from "swr"
-import { fetcher } from "@/lib/api"
-import type { Product } from "@/lib/types"
-import { ProductCard } from "@/components/product-card"
+import { useSearchParams } from "next/navigation";
+import useSWR from "swr";
+import { fetcher } from "@/lib/api";
+import type { Product } from "@/lib/types";
+import { ProductCard } from "@/components/product-card";
 
 export default function SearchPage() {
-  const params = useSearchParams()
-  const q = params.get("q") || ""
-  const { data, isLoading } = useSWR<{ items: Product[] }>(`/api/products?q=${encodeURIComponent(q)}`, fetcher)
+  const params = useSearchParams();
+  const q = params.get("q") || "";
+  const { data, isLoading } = useSWR<{ items: Product[] }>(
+    `/api/products?q=${encodeURIComponent(q)}`,
+    fetcher
+  );
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -29,5 +32,5 @@ export default function SearchPage() {
         </div>
       )}
     </div>
-  )
+  );
 }

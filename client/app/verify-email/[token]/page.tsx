@@ -1,28 +1,34 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { AuthService } from "@/services/auth-service"
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { AuthService } from "@/services/auth-service";
+import { storeAuthTokens } from "@/lib/apiClient";
 
 export default function VerifyEmailPage() {
-  const params = useParams()
-  const router = useRouter()
-  const [status, setStatus] = useState<"verifying" | "success" | "error">("verifying")
-  const [message, setMessage] = useState("")
+  const params = useParams();
+  const router = useRouter();
+  const [status, setStatus] = useState<"verifying" | "success" | "error">(
+    "verifying"
+  );
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const token = params.token as string
+    const token = params.token as string;
     AuthService.verifyEmail(token).then((res) => {
       if (res.error) {
-        setStatus("error")
-        setMessage(res.error.message)
+        setStatus("error");
+        setMessage(res.error.message);
       } else {
-        setStatus("success")
-        setMessage(res.data?.message || "Email verified successfully")
+        if (res.data?.token) {
+          storeAuthTokens({ token: res.data.token });
+        }
+        setStatus("success");
+        setMessage(res.data?.message || "Email verified successfully");
       }
-    })
-  }, [params.token])
+    });
+  }, [params.token]);
 
   return (
     <div className="container mx-auto grid place-items-center px-4 py-12">
@@ -35,23 +41,31 @@ export default function VerifyEmailPage() {
         )}
         {status === "success" && (
           <>
-            <h1 className="font-heading text-2xl text-green-600">Email verified!</h1>
+            <h1 className="font-heading text-2xl text-green-600">
+              Email verified!
+            </h1>
             <p className="text-sm text-muted-foreground">{message}</p>
-            <Button onClick={() => router.push("/login")} className="w-full">
-              Sign in
+            <Button onClick={() => router.push("/profile")} className="w-full">
+              Continue to Profile
             </Button>
           </>
         )}
         {status === "error" && (
           <>
-            <h1 className="font-heading text-2xl text-destructive">Verification failed</h1>
+            <h1 className="font-heading text-2xl text-destructive">
+              Verification failed
+            </h1>
             <p className="text-sm text-muted-foreground">{message}</p>
-            <Button variant="outline" onClick={() => router.push("/")} className="w-full">
+            <Button
+              variant="outline"
+              onClick={() => router.push("/")}
+              className="w-full"
+            >
               Go home
             </Button>
           </>
         )}
       </div>
     </div>
-  )
+  );
 }

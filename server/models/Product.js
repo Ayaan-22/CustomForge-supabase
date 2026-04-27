@@ -145,25 +145,26 @@ export const getAllProductsForAdmin = async () => {
 =========================================================== */
 
 export const changeStock = async (productId, delta) => {
-  const { data, error } = await supabase.rpc("update_product_stock", {
+  const { data, error } = await supabase.rpc("change_stock", {
     p_product_id: productId,
     p_delta: delta,
   });
 
   if (error) throw new Error(error.message);
-  const row = Array.isArray(data) ? data[0] : data;
-  return row ? mapProductRow(row) : null;
+  
+  // Return the updated product (optional fetch if UI needs it, but RPC doesn't return the row in this implementation)
+  return getProductById(productId);
 };
 
 export const increaseSales = async (productId, qty) => {
-  const { data, error } = await supabase.rpc("increment_product_sales", {
+  const { data, error } = await supabase.rpc("increase_sales", {
     p_product_id: productId,
     p_qty: qty,
   });
 
   if (error) throw new Error(error.message);
-  const row = Array.isArray(data) ? data[0] : data;
-  return row ? mapProductRow(row) : null;
+  
+  return getProductById(productId);
 };
 
 /* ===========================================================

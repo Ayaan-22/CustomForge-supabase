@@ -35,12 +35,14 @@ interface ReviewDetailsModalProps {
   review: Review;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onModerate: (id: string, action: "approve" | "reject") => Promise<void>;
 }
 
 export function ReviewDetailsModal({
   review,
   open,
   onOpenChange,
+  onModerate,
 }: ReviewDetailsModalProps) {
   if (!open) return null;
 
@@ -181,7 +183,25 @@ export function ReviewDetailsModal({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-3 p-6 border-t border-[#2A2A35]">
+        <div className="flex justify-between p-6 border-t border-[#2A2A35]">
+          <div className="flex gap-2">
+            {(review.reported || !review.is_active) && (
+              <Button
+                onClick={() => onModerate(review.id, "approve")}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                Approve
+              </Button>
+            )}
+            {review.is_active && (
+              <Button
+                onClick={() => onModerate(review.id, "reject")}
+                variant="destructive"
+              >
+                Reject
+              </Button>
+            )}
+          </div>
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}

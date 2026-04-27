@@ -218,9 +218,12 @@ export default class Email {
   }
 
   async sendOrderConfirmation(order) {
-    const orderId = order.id || order._id || order.order_number || "N/A";
+    const orderId = order?.id || order?._id || order?.order_number || "N/A";
+    const totalPrice = order?.total_price || order?.totalPrice || "0.00";
     await this.send("orderConfirmation", `Your GameShop Order #${orderId}`, {
-      order,
+      order: order || {},
+      orderId,
+      totalPrice,
     });
   }
 

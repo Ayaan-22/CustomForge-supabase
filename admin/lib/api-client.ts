@@ -5,6 +5,12 @@
 
 import { useAuthStore } from "./auth-store";
 import { authClient } from "./auth-client"; // Declare the authClient variable
+import {
+  transformCouponToBackend,
+  transformCouponToFrontend,
+  type Coupon,
+  type CouponPayload,
+} from "./coupon-transforms";
 
 // Use runtime environment variable to point to server API
 const RUNTIME_API_BASE =
@@ -488,7 +494,10 @@ export const apiClient = {
     const response = await fetchWithAuth(`${API_BASE}/products/${id}`, {
       method: "DELETE",
     });
-    if (!response.ok) throw new Error("Failed to delete product");
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || "Failed to delete product");
+    }
     return response.json();
   },
 
@@ -663,7 +672,22 @@ export const apiClient = {
     }
     const response = await fetchWithAuth(`${API_BASE}/coupons`);
     if (!response.ok) throw new Error("Failed to fetch coupons");
-    return response.json();
+    const data = await response.json();
+
+    // Transform backend data to frontend format
+    if (Array.isArray(data)) {
+      return data.map((coupon: CouponPayload) =>
+        transformCouponToFrontend(coupon)
+      );
+    } else if (data.data && Array.isArray(data.data)) {
+      return {
+        ...data,
+        data: data.data.map((coupon: CouponPayload) =>
+          transformCouponToFrontend(coupon)
+        ),
+      };
+    }
+    return data;
   },
 
   getCoupon: async (id: string) => {
@@ -675,33 +699,74 @@ export const apiClient = {
     }
     const response = await fetchWithAuth(`${API_BASE}/coupons/${id}`);
     if (!response.ok) throw new Error("Failed to fetch coupon");
-    return response.json();
+    const data = await response.json();
+
+    // Transform backend data to frontend format
+    if (data.data) {
+      return {
+        ...data,
+        data: transformCouponToFrontend(data.data),
+      };
+    }
+    return transformCouponToFrontend(data);
   },
 
   createCoupon: async (data: Record<string, any>) => {
     if (USE_MOCK_API) {
       return { ...data, id: Date.now() };
     }
+
+    // Transform frontend data to backend format
+    const backendPayload = transformCouponToBackend(data as Coupon);
+
     const response = await fetchWithAuth(`${API_BASE}/coupons`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify(backendPayload),
     });
-    if (!response.ok) throw new Error("Failed to create coupon");
-    return response.json();
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || "Failed to create coupon");
+    }
+    const result = await response.json();
+
+    // Transform response back to frontend format if it contains coupon data
+    if (result.data) {
+      return {
+        ...result,
+        data: transformCouponToFrontend(result.data),
+      };
+    }
+    return result;
   },
 
   updateCoupon: async (id: string, data: Record<string, any>) => {
     if (USE_MOCK_API) {
       return { id, ...data };
     }
+
+    // Transform frontend data to backend format
+    const backendPayload = transformCouponToBackend(data as Coupon);
+
     const response = await fetchWithAuth(`${API_BASE}/coupons/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify(backendPayload),
     });
-    if (!response.ok) throw new Error("Failed to update coupon");
-    return response.json();
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || "Failed to update coupon");
+    }
+    const result = await response.json();
+
+    // Transform response back to frontend format if it contains coupon data
+    if (result.data) {
+      return {
+        ...result,
+        data: transformCouponToFrontend(result.data),
+      };
+    }
+    return result;
   },
 
   deleteCoupon: async (id: string) => {
@@ -736,14 +801,21 @@ export const apiClient = {
     return response.json();
   },
 
-  moderateReview: async (id: string, action: "approve" | "reject") => {
+  moderateReview: async (
+    id: string,
+    data: {
+      action?: "approve" | "reject";
+      isActive?: boolean;
+      reportReason?: string;
+    }
+  ) => {
     if (USE_MOCK_API) {
-      return { message: `Review ${action}ed` };
+      return { message: `Review updated` };
     }
     const response = await fetchWithAuth(`${API_BASE}/reviews/${id}/moderate`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify(data),
     });
     if (!response.ok) throw new Error("Failed to moderate review");
     return response.json();

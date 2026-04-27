@@ -1,250 +1,74 @@
-# Full E‑Commerce Backend (Node.js + Express + Supabase)
-This project is a **production‑grade e‑commerce backend** featuring:
-- Full authentication (JWT, 2FA, email verification)
-- Complete product system (products, categories, reviews)
-- Cart & coupon flow (soft preview + strict checkout validation)
-- Order management (atomic checkout, stock management, returns)
-- Payment processing (Stripe, PayPal, COD)
-- Admin dashboard (users, orders, analytics, logs)
-- Secure architecture following industry standards
-- Fully structured **Postman Collection** included
+# 🛠️ CustomForge: Production-Grade E-Commerce Platform
+
+CustomForge is a full-stack, high-performance e-commerce ecosystem built with **Node.js**, **Next.js**, and **Supabase**. It features a robust hardware product system, secure checkout flows, and a dedicated admin management suite.
 
 ---
 
-# 📌 Tech Stack
-| Layer | Technology |
-|------|------------|
-| Backend | Node.js, Express.js |
-| Database | Supabase |
-| Auth | JWT, bcrypt, 2FA (TOTP), Email verification |
-| Payments | Stripe, PayPal, COD |
-| Logging | Winston + Daily Rotate File |
-| API Testing | Postman |
-| Validation | Joi |
-| Security | Helmet, Rate Limiting, Sanitization |
+## ✨ Key Features
+
+- **🔐 Secure Auth**: JWT-based session management with 2FA and refresh tokens.
+- **🛒 Smart Cart**: Soft preview vs. strict checkout validation logic.
+- **⚡ Atomic Orders**: Transactional order processing with inventory locks.
+- **💳 Payments**: Integrated support for Stripe, PayPal, and COD.
+- **📊 Admin Portal**: Comprehensive dashboard for orders, users, and analytics.
+- **📝 Audit Trails**: Enterprise-grade logging for all system activities.
 
 ---
 
-# 📦 Project Structure
+## 📚 Documentation Index
 
-```
-/models
-  Cart.js
-  Coupon.js
-  Product.js
-  Order.js
-  User.js
-  Review.js
-  Game.js
-  PrebuiltPc.js
+Our documentation is organized to help you get up and running quickly.
 
-/controllers
-  authController.js
-  userController.js
-  productController.js
-  cartController.js
-  orderController.js
-  paymentController.js
-  adminController.js
-  logController.js
+### 🏁 Getting Started
 
-/routes
-  authRoutes.js
-  userRoutes.js
-  productRoutes.js
-  cartRoutes.js
-  orderRoutes.js
-  paymentRoutes.js
-  adminRoutes.js
+- **[Installation Guide](docs/getting-started.md)**: Setup, dependencies, and environment configuration.
+- **[Quick Start](docs/getting-started.md#running-the-project)**: How to run the platform locally.
 
-/utils
-  appError.js
-  email.js
-  logger.js
-  authMiddleware.js
-```
+### 🏗️ Architecture
+
+- **[System Overview](docs/architecture/system-overview.md)**: Tech stack and project structure.
+- **[Database Schema](docs/architecture/database-schema.md)**: Data models and validation rules.
+
+### 🔌 API Reference
+
+- **[API Endpoints](docs/api/endpoints.md)**: Comprehensive list of all available routes.
+- **[Auth Flow](docs/api/auth-flow.md)**: Authentication and security details.
+- **[Order Processing](docs/api/cart-orders.md)**: Cart and checkout business logic.
+
+### 📜 Historical Reports
+
+- **[Supabase Migration](docs/reports/supabase-migration.md)**: Details on the transition to Supabase.
+- **[Auth Audit](docs/reports/auth-audit.md)**: Security and UI authentication review.
+- **[Schema Alignment](docs/reports/schema-alignment.md)**: Consistency checks between frontend and backend.
 
 ---
 
-# 🔐 Authentication Flow
-### Includes:
-- Registration with email verification
-- Login with JWT access tokens
-- Optional 2FA (Time‑Based OTP)
-- Forgot & reset password
-- Update password with old password + 2FA
-- “Protect” middleware for secure route access
+## 🛠️ Tech Stack
+
+| Module | Core Technologies |
+| :--- | :--- |
+| **Backend** | Node.js, Express.js, Supabase, Winston |
+| **Storefront** | Next.js, TailwindCSS, SWR |
+| **Admin** | Next.js, Radix UI, Lucide |
+| **Auth** | JWT, Bcrypt, TOTP (2FA) |
+| **Payments** | Stripe API, PayPal SDK |
 
 ---
 
-# 🛒 Cart + Coupon System
+## 🚀 Quick Commands
 
-## 🟦 **Cart is Preview Mode**
-When a user applies a coupon:
-
-```
-POST /cart/coupon
-```
-
-Backend:
-- Validates coupon existence & active state  
-- Shows *preview* discount  
-- Does NOT enforce rules  
-- Does NOT deduct stock  
-- Does NOT increase coupon usage  
-
-_User can see discount preview but it is not guaranteed._
-
----
-
-## 🟥 **Checkout is Strict Validation Mode**
-When user places an order:
-
-```
-POST /orders
-```
-
-Backend performs **all strict checks**:
-- Coupon validity  
-- Start/end date  
-- Min/max order value  
-- Applies to product / category?  
-- Per‑user usage?  
-- Global usage limit?  
-- Stock availability  
-- Idempotency protection  
-- Atomic transaction:
-  1. Validate coupon  
-  2. Validate stock  
-  3. Deduct stock  
-  4. Increment coupon usage  
-  5. Create order  
-  6. Clear cart  
-  7. Commit  
-
-If anything fails → rollback.
-
----
-
-# 🧾 Orders & Payments Flow
-
-### ✔ Flow:
-1. Order is created  
-2. Stock locked  
-3. User redirected to payment  
-4. Payment processed  
-5. Order marked as **paid**
-
-Supported:
-- Stripe
-- PayPal
-- Cash On Delivery
-
----
-
-# 🛠 Admin Features
-Admins can:
-- View sales analytics  
-- Product analytics  
-- User management (CRUD + roles)  
-- Product management (CRUD)  
-- Order management (status, refunds, returns)  
-- Coupon management  
-- Logging system  
-
----
-
-# 📊 Logging System
-Admins can:
-- View all logs  
-- View logs by ID  
-- Get log dates  
-- Get log stats by date  
-
----
-
-# 🧪 Postman Collection
-Full Postman collection included with:
-- Structured URLs (`raw`, `host`, `path`, `query`)
-- Examples
-- Edge cases
-- Flow-ready requests
-
-Download file: `ecommerce_postman_collection_structured.json`
-
----
-
-# 🚀 How to Run
-
-## 1️⃣ Install
-```
-npm install
-```
-
-## 2️⃣ Environment Variables
-Create `.env`:
-
-```
-PORT=5000
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-JWT_SECRET=your_jwt_secret
-JWT_EXPIRES=7d
-
-EMAIL_USERNAME=your_email
-EMAIL_PASSWORD=your_email_password
-
-STRIPE_SECRET_KEY=sk_test_...
-PAYPAL_CLIENT_ID=...
-PAYPAL_SECRET=...
-
-NODE_ENV=development
-```
-
-## 3️⃣ Start
-```
-npm run dev
+```bash
+# Run everything locally
+cd server && npm run dev
+cd ../client && npm run dev
+cd ../admin && npm run dev
 ```
 
 ---
 
-# 🔒 Security
-- Helmet  
-- Sanitization  
-- Rate limiting  
-- Enforced JWT  
-- Password hashing  
-- 2FA  
-- Idempotent order creation  
-- Atomic stock updates  
-- No coupon snapshots in cart  
+## 🛡️ License & Support
+
+This project is intended for production use. For configuration issues or feature requests, please refer to the **[Getting Started](docs/getting-started.md)** guide or consult the **[API Reference](docs/api/endpoints.md)**.
 
 ---
-
-# 🧹 Code Architecture
-- Controller → Service → Model separation  
-- Atomic transactions  
-- Central error handling  
-- Logging pipeline  
-- Clean helper utilities  
-
----
-
-# 🎯 Improvements Over Standard Backends
-- Soft vs strict coupon system  
-- Fully structured Postman collection  
-- 2FA integrated routes  
-- Admin log analytics  
-- Atomic checkout  
-- Query-structured URLs  
-
----
-
-# 🎉 Final Notes
-This backend is:
-- Secure  
-- Scalable  
-- Production‑ready  
-- Easy to extend  
-- Frontend‑friendly  
-
+*Built with ❤️ by the CustomForge Team.*

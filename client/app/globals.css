@@ -115,7 +115,8 @@
   * {
     @apply border-border outline-ring/50;
     cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="6" fill="%23b3e5fc" opacity="0.8"/><circle cx="16" cy="16" r="4" fill="%2300bfff"/><circle cx="16" cy="16" r="2" fill="%23ffffff"/></svg>')
-      16 16, auto;
+        16 16,
+      auto;
   }
 
   button,
@@ -125,7 +126,8 @@
   input[type="radio"],
   select {
     cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M3 3l18 9-18 9V13l8-4-8-4v-2z" fill="%2300bfff"/><path d="M3 3l18 9-18 9V13l8-4-8-4v-2z" fill="%23b3e5fc" opacity="0.5" transform="translate(1 1)"/></svg>')
-      4 4, pointer;
+        4 4,
+      pointer;
   }
 
   body {

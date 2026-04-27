@@ -1,36 +1,27 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
 
-import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
-import useSWR from "swr"
-import { Skeleton } from "@/components/ui/skeleton"
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/lib/auth-context";
 
-export default function ProfileLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter()
-  const [checking, setChecking] = useState(true)
-
-  const { data: me, error } = useSWR(
-    "/api/v1/users/me",
-    async (url) => {
-      const res = await fetch(url, { credentials: "include" })
-      if (!res.ok) throw new Error("unauthenticated")
-      return res.json()
-    },
-    { revalidateOnFocus: false },
-  )
+export default function ProfileLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const router = useRouter();
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   useEffect(() => {
-    if (error) {
-      router.push("/login?redirect=/profile")
+    if (!isLoading && !isAuthenticated) {
+      router.push("/login?redirect=/profile");
     }
-    if (me) {
-      setChecking(false)
-    }
-  }, [me, error, router])
+  }, [isAuthenticated, isLoading, router]);
 
-  if (checking || error) {
+  if (isLoading || !isAuthenticated || !user) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="space-y-4">
@@ -38,8 +29,8 @@ export default function ProfileLayout({ children }: { children: React.ReactNode 
           <Skeleton className="h-96 w-full" />
         </div>
       </div>
-    )
+    );
   }
 
-  return children
+  return children;
 }

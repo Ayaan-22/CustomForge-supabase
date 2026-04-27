@@ -182,6 +182,27 @@ export const updateUser = async (id, updates) => {
    USER ADDRESSES
 =========================================================== */
 
+// Map address row from DB to frontend format
+const mapAddressRow = (row) => {
+  if (!row) return null;
+  // Split address into line1 and line2 if it contains a comma
+  const addressParts = row.address?.split(", ") || [row.address || ""];
+  return {
+    id: row.id,
+    fullName: row.full_name,
+    phoneNumber: row.phone_number,
+    line1: addressParts[0] || "",
+    line2: addressParts[1] || "",
+    address: row.address, // Keep original for compatibility
+    city: row.city,
+    state: row.state,
+    postalCode: row.postal_code,
+    country: row.country,
+    isDefault: row.is_default,
+    label: row.label,
+  };
+};
+
 export const getUserAddresses = async (userId) => {
   const { data, error } = await supabase
     .from("user_addresses")
@@ -190,7 +211,7 @@ export const getUserAddresses = async (userId) => {
     .order("is_default", { ascending: false });
 
   if (error) throw new Error(error.message);
-  return data;
+  return data.map(mapAddressRow);
 };
 
 export const addUserAddress = async (userId, address) => {
@@ -221,7 +242,7 @@ export const addUserAddress = async (userId, address) => {
     .single();
 
   if (error) throw new Error(error.message);
-  return data;
+  return mapAddressRow(data);
 };
 
 export const setDefaultAddress = async (userId, addressId) => {
@@ -243,7 +264,7 @@ export const setDefaultAddress = async (userId, addressId) => {
     .single();
 
   if (error) throw new Error(error.message);
-  return data;
+  return mapAddressRow(data);
 };
 
 /* ===========================================================

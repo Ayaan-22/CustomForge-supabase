@@ -49,6 +49,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.set("trust proxy", 1);
 
 /* ============================================================
    🛡️ SECURITY MIDDLEWARE
@@ -72,13 +73,22 @@ app.use(
 );
 
 // allow admin frontend to call API and send cookies
-const ADMIN_URL = process.env.ADMIN_URL || process.env.CLIENT_URL || "http://localhost:3000";
+const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
+const ADMIN_URL = process.env.ADMIN_URL || "http://localhost:3001";
+const ALLOWED_ORIGINS = [CLIENT_URL, ADMIN_URL];
 
 app.use(
   cors({
     origin: (origin, cb) => {
-      if (!origin) return cb(null, true); // allow non-browser requests (curl, server-side)
-      cb(null, ADMIN_URL);
+      // allow non-browser requests (curl, server-side)
+      if (!origin) return cb(null, true);
+      
+      if (ALLOWED_ORIGINS.includes(origin) || origin.startsWith("http://localhost")) {
+        cb(null, true);
+      } else {
+        logger.warn(`CORS blocked for origin: ${origin}`);
+        cb(new Error("Not allowed by CORS"));
+      }
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -126,11 +136,26 @@ app.use((req, res, next) => {
 /* ============================================================
    🚦 RATE LIMITING
 ============================================================ */
-app.use("/api", apiLimiter);
+// Root level limiter for non-API routes (landing page, static content, etc.)
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api")) return next();
+  return publicLimiter(req, res, next);
+});
+
+// API-specific limiters
 app.use("/api/v1/auth", authLimiter);
 app.use("/api/v1/payment", paymentLimiter);
 
-app.use(publicLimiter);
+// Generic API limiter (excluding routes that already have specialized limiters)
+app.use("/api", (req, res, next) => {
+  const specializedRoutes = ["/v1/auth", "/v1/payment"];
+  const isSpecialized = specializedRoutes.some((route) =>
+    req.path.startsWith(route)
+  );
+
+  if (isSpecialized) return next();
+  return apiLimiter(req, res, next);
+});
 
 /* ============================================================
    📁 STATIC FILES

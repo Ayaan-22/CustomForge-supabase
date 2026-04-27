@@ -147,6 +147,8 @@ function normalizeCouponRow(row) {
   };
 }
 
+import { mapOrderToFrontend } from "../utils/orderTransform.js";
+
 /**
  * Load user's cart with items, products and coupon details
  */
@@ -187,6 +189,7 @@ const loadCartWithDetails = async (userId) => {
           id,
           name,
           images,
+          original_price,
           final_price,
           stock,
           is_active
@@ -399,6 +402,11 @@ export const createOrder = asyncHandler(async (req, res, next) => {
     const removedProducts = [];
     let itemsPrice = 0;
 
+    logger.info("Building order items from cart", {
+      userId,
+      cartItemsCount: cart.items.length,
+    });
+
     for (const cartItem of cart.items) {
       const product = cartItem.product;
       const quantity = Number(cartItem.quantity) || 0;
@@ -420,8 +428,22 @@ export const createOrder = asyncHandler(async (req, res, next) => {
         continue;
       }
 
-      const unitPrice = Number(product.final_price || 0);
+      // Use final_price if available, otherwise fall back to original_price
+      const unitPrice = Number(
+        product.final_price ?? product.original_price ?? 0
+      );
       const lineTotal = unitPrice * quantity;
+
+      logger.info("Processing cart item", {
+        userId,
+        productId: product.id,
+        productName: product.name,
+        originalPrice: product.original_price,
+        finalPrice: product.final_price,
+        unitPrice,
+        quantity,
+        lineTotal,
+      });
 
       orderItemsPayload.push({
         productId: product.id,
@@ -434,6 +456,19 @@ export const createOrder = asyncHandler(async (req, res, next) => {
 
       itemsPrice += lineTotal;
     }
+
+    logger.info("Order items payload built", {
+      userId,
+      itemsCount: orderItemsPayload.length,
+      itemsPrice,
+      orderItemsPayload: orderItemsPayload.map((item) => ({
+        productId: item.productId,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        priceSnapshot: item.priceSnapshot,
+      })),
+    });
 
     if (removedProducts.length > 0) {
       throw new AppError(
@@ -477,6 +512,15 @@ export const createOrder = asyncHandler(async (req, res, next) => {
     // 4. Compute final prices
     const prices = calculateOrderPrices(itemsPrice, discountAmount);
 
+    logger.info("Order prices calculated", {
+      userId,
+      itemsPrice: prices.itemsPrice,
+      discountAmount: prices.discountAmount,
+      shippingPrice: prices.shippingPrice,
+      taxPrice: prices.taxPrice,
+      totalPrice: prices.totalPrice,
+    });
+
     // 5. Create order row
     const orderPayload = {
       user_id: userId,
@@ -515,13 +559,48 @@ export const createOrder = asyncHandler(async (req, res, next) => {
       price_snapshot: item.priceSnapshot,
     }));
 
-    const { error: itemsError } = await supabase
+    logger.info("Inserting order items into database", {
+      userId,
+      orderId: order.id,
+      itemsCount: orderItemsRows.length,
+      orderItemsRows: orderItemsRows.map((row) => ({
+        order_id: row.order_id,
+        product_id: row.product_id,
+        name: row.name,
+        price: row.price,
+        quantity: row.quantity,
+        price_snapshot: row.price_snapshot,
+      })),
+    });
+
+    const { data: insertedItems, error: itemsError } = await supabase
       .from("order_items")
-      .insert(orderItemsRows);
+      .insert(orderItemsRows)
+      .select("*");
 
     if (itemsError) {
+      logger.error("Failed to insert order items", {
+        userId,
+        orderId: order.id,
+        error: itemsError.message,
+        orderItemsRows,
+      });
       throw new Error(itemsError.message);
     }
+
+    logger.info("Order items inserted successfully", {
+      userId,
+      orderId: order.id,
+      insertedItemsCount: insertedItems?.length || 0,
+      insertedItems: insertedItems?.map((item) => ({
+        id: item.id,
+        product_id: item.product_id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        price_snapshot: item.price_snapshot,
+      })),
+    });
 
     // 7. Stock & sales updates via RPC
     for (const item of orderItemsPayload) {
@@ -657,9 +736,11 @@ export const getOrderById = asyncHandler(async (req, res, next) => {
 
   validateOrderOwnership(order, req.user.id, req.user.role);
 
+  const transformedOrder = mapOrderToFrontend(order);
+
   res.status(200).json({
     success: true,
-    data: order,
+    data: transformedOrder,
   });
 });
 
@@ -790,15 +871,17 @@ export const getMyOrders = asyncHandler(async (req, res, next) => {
   }
 
   // ---------------------------------------------
-  // 8. RESPONSE
+  // 8. TRANSFORM AND RESPONSE
   // ---------------------------------------------
+  const transformedOrders = filteredOrders.map(mapOrderToFrontend);
+
   res.status(200).json({
     success: true,
     page,
     limit,
     total: count ?? filteredOrders.length,
     results: filteredOrders.length,
-    data: filteredOrders,
+    data: transformedOrders,
   });
 
   logger.info("User orders fetched successfully", {

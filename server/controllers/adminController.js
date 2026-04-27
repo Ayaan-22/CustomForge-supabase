@@ -1450,9 +1450,20 @@ export const moderateReview = asyncHandler(async (req, res, next) => {
     throw new AppError("Invalid review ID", 400);
   }
 
-  const { isActive, reportReason } = req.body;
+  const { isActive, reportReason, action } = req.body;
 
   const updates = {};
+
+  // Handle action-based moderation (approve/reject)
+  if (action === "approve") {
+    updates.is_active = true;
+    updates.reported = false;
+    updates.report_reason = null;
+  } else if (action === "reject") {
+    updates.is_active = false;
+  }
+
+  // Handle direct field updates (legacy/flexible support)
   if (isActive !== undefined) {
     updates.is_active = Boolean(isActive);
   }
