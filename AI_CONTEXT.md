@@ -73,7 +73,7 @@ Public discovery: /, /products, /products/[id], /search, /deals, /compare, /pc-b
 
 Auth/recovery: /login, /register, /forgot-password, /reset-password/[token], /verify-email, /verify-email/[token]. Guest cart/wishlist browsing is supported; server persistence and checkout require active, verified authentication. A page's existence does not imply an operation works: the new saved-card page explicitly explains enrollment is unavailable.
 
-The storefront experience includes a session-scoped branded boot animation, CSS hero scene/video fallback, product/page skeletons and custom error/empty/not-found states. Optional product video/spin-frame entries live in public/media/products/<sku>/ and are registered by SKU in client/lib/product-media.ts. Reduced-motion users must retain complete usable content.
+The storefront experience includes a session-scoped branded boot animation, CSS hero scene/video fallback, product/page skeletons and custom error/empty/not-found states. Optional product video/spin-frame entries live in `public/media/products/<sku>/` and are registered by SKU in client/lib/product-media.ts. Reduced-motion users must retain complete usable content.
 
 TanStack Query owns server reads/mutations; Zustand owns in-memory session state and device intent. Guest cart snapshots persist under customforge-guest-cart-v2; guest wishlist IDs have a separate store. Hooks merge guest intent into server cart/wishlist on sign-in. The server remains authoritative for prices, stock and permissions.
 
@@ -89,7 +89,7 @@ Detailed tokens, typography, motion and asset replacement points live in the des
 
 ## 5. Transport and request lifecycle
 
-Both browser apps call **their own origin's /api/v1**. Next rewrites forward to server-only API_BACKEND_URL (default http://localhost:5000), normalizing a trailing /api/v1 suffix. Legacy NEXT_PUBLIC_API_BASE_URL/API_URL settings are not active transport authority.
+Both browser apps call **their own origin's /api/v1**. Next rewrites forward to server-only API_BACKEND_URL (default `http://localhost:5000`), normalizing a trailing /api/v1 suffix. Legacy NEXT_PUBLIC_API_BASE_URL/API_URL settings are not active transport authority.
 
 [client/lib/apiClient.ts](client/lib/apiClient.ts) returns data/error/status envelopes; [admin/lib/transport.ts](admin/lib/transport.ts) throws ApiError and returns Response. Controller response shapes vary: use service/DTO/mappers rather than assuming one raw envelope.
 
@@ -252,7 +252,7 @@ Never put real secrets, account emails/passwords, project IDs or personal machin
 | CSRF_SECRET | Request binding. |
 | STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET | Provider initialization/signature checks; test mode for local payment work. |
 | EMAIL_HOST, EMAIL_PORT, EMAIL_USERNAME, EMAIL_PASSWORD, EMAIL_FROM; CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET | Mail and images. |
-| RATE_* and LOG_*; ENABLE_DEV_ROUTES | Existing limiter/logger settings and opt-in test-mode email helpers; inspect source for exact supported flags. |
+| `RATE_*` and `LOG_*`; ENABLE_DEV_ROUTES | Existing limiter/logger settings and opt-in test-mode email helpers; inspect source for exact supported flags. |
 | NEXT_PUBLIC_HERO_VIDEO, NEXT_PUBLIC_DEAL_ENDS_AT | Optional video and real future campaign deadline. Absent/expired deadline does not create a timer. |
 
 Run npm --prefix so default dotenv lookup is the server package directory. app/server also attempt config/config.env, absent here. Import-time env lookup from the wrong directory is not supported setup. Database/payment modules initialize at startup, so COD-only development still needs required configuration. NODE_TLS_REJECT_UNAUTHORIZED=0 is rejected; never disable certificate verification.

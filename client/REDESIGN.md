@@ -44,7 +44,6 @@ This discovery package preserves all current commerce data and security contract
 - Normalized specification scans are capped at **1,000 candidate products**. Above that bound, the facets endpoint returns unavailable options with a narrowing explanation; applying specification filters returns a narrowing error instead of truncated results or invented counts. Ordinary catalog queries without specification filters retain database pagination. A larger catalog needs a database-backed normalized facet index/RPC before expanding this limit; no schema migration was introduced here.
 - The desktop purchase panel spans the gallery and detail rows so it remains available deeper in the page. A panel taller than the viewport scrolls internally; the mobile purchase bar remains separate.
 
-
 ## Commerce, account and collections / Phase 3
 
 - The full cart and slide-out mini cart now use stock-aware quantity controls, visible inventory warnings and clearer updating/error states. Unavailable items and quantities above known inventory require review; increasing quantity respects published stock. Guest prices remain a device snapshot subtotal, with shipping, tax and final totals explicitly deferred. Signed-in summaries display confirmed server totals and their warnings rather than relabeling a local estimate as the order total.
@@ -55,7 +54,6 @@ This discovery package preserves all current commerce data and security contract
 - Wishlist curation adds live category selection, saved/name/price sorting and per-item refresh, unavailable-listing and removal states. Guest and account saving retain their existing persistence rules. An unsuccessful product refresh does not erase the saved selection or block the rest of the collection.
 - Comparison refreshes each of up to four products independently. Failed columns expose their own retry/remove controls without borrowing persisted snapshot prices or specifications. “Differences only” requires at least two loaded products. Conservative category-specific aliases and value normalization expose conflicting aliases, keep missing data unverified and avoid equating unrelated attributes across product categories. The bounded, keyboard-focusable table scrolls in both directions with sticky product headers and row labels.
 - Presentation additions remain route/component scoped: `app/forge-commerce.css` is imported by `app/cart/page.tsx`, `app/forge-checkout.css` by `app/checkout/page.tsx`, `app/forge-account.css` by `components/forge/account-shell.tsx`, and `app/forge-collections.css` by the wishlist/compare routes. Checkout waiting/recovery components live in `components/forge/checkout-views.tsx`; draft, order-page, comparison and cart presentation rules have reusable helpers under `lib/`.
-
 
 ## Implemented pages and components
 
@@ -158,4 +156,3 @@ Route styles are app/forge-addresses.css, app/forge-security.css, app/forge-orde
 Sign-in, registration, forgot/reset password and verification now use the shared AuthShell, solid readable forms, password visibility controls and the inline circuit scene. The scene uses native CSS transform motion, is hidden on mobile and stops with reduced-motion preferences. No external auth artwork or animation library is required.
 
 Inline validation and request feedback have associated descriptions and deliberate focus. Ref guards prevent duplicate requests before rerender; finally paths release pending state. Login keeps exact credentials through its authenticator challenge and preserves safe local redirects. Recovery distinguishes accepted requests, retryable failures and invalid links; one-use verification requests are deduplicated across effect replay. The protected-operation dialog keeps typed codes through parent updates and restores its initiating control/form on close. Existing APIs, session policy and protected mutations remain in place.
-

@@ -41,28 +41,28 @@ The legacy admin `DELETE /products/:id/reviews` interprets `id` as a review ID, 
 
 | Method | Absolute path | Access middleware | Limits | Canonical replacement / notes |
 | --- | --- | --- | --- | --- |
-| GET | `/api/v1/health` | public; token/cookie checks in auth handlers where applicable | api |  |
-| GET | `/api/v1/auth/csrf-token` | public; token/cookie checks in auth handlers where applicable | auth |  |
-| GET | `/api/v1/auth/verify-email/:token` | public; token/cookie checks in auth handlers where applicable | auth + sensitiveAuth |  |
-| POST | `/api/v1/auth/register` | public; token/cookie checks in auth handlers where applicable | auth + sensitiveAuth |  |
-| POST | `/api/v1/auth/login` | public; token/cookie checks in auth handlers where applicable | auth + sensitiveAuth + login |  |
+| GET | `/api/v1/health` | public; token/cookie checks in auth handlers where applicable | api | |
+| GET | `/api/v1/auth/csrf-token` | public; token/cookie checks in auth handlers where applicable | auth | |
+| GET | `/api/v1/auth/verify-email/:token` | public; token/cookie checks in auth handlers where applicable | auth + sensitiveAuth | |
+| POST | `/api/v1/auth/register` | public; token/cookie checks in auth handlers where applicable | auth + sensitiveAuth | |
+| POST | `/api/v1/auth/login` | public; token/cookie checks in auth handlers where applicable | auth + sensitiveAuth + login | |
 | POST | `/api/v1/auth/resend-verification` | public; token/cookie checks in auth handlers where applicable | auth + sensitiveAuth + verificationAccount | Email/password proof; CSRF; IP + account throttling; sends email only, no session issued |
-| POST | `/api/v1/auth/logout` | public; token/cookie checks in auth handlers where applicable | auth |  |
-| POST | `/api/v1/auth/forgot-password` | public; token/cookie checks in auth handlers where applicable | auth + sensitiveAuth |  |
-| POST | `/api/v1/auth/reset-password/:token` | public; token/cookie checks in auth handlers where applicable | auth + sensitiveAuth |  |
-| POST | `/api/v1/auth/refresh` | public; token/cookie checks in auth handlers where applicable | auth + sensitiveAuth |  |
+| POST | `/api/v1/auth/logout` | public; token/cookie checks in auth handlers where applicable | auth | |
+| POST | `/api/v1/auth/forgot-password` | public; token/cookie checks in auth handlers where applicable | auth + sensitiveAuth | |
+| POST | `/api/v1/auth/reset-password/:token` | public; token/cookie checks in auth handlers where applicable | auth + sensitiveAuth | |
+| POST | `/api/v1/auth/refresh` | public; token/cookie checks in auth handlers where applicable | auth + sensitiveAuth | |
 | GET | `/api/v1/users/me` | optionalAuth; anonymous data=null | userAction | optionalAuth; data is null when anonymous |
-| GET | `/api/v1/products` | public; token/cookie checks in auth handlers where applicable | api |  |
-| GET | `/api/v1/products/top` | public; token/cookie checks in auth handlers where applicable | api |  |
-| GET | `/api/v1/products/search` | public; token/cookie checks in auth handlers where applicable | api |  |
-| GET | `/api/v1/products/categories` | public; token/cookie checks in auth handlers where applicable | api |  |
-| GET | `/api/v1/products/brands` | public; token/cookie checks in auth handlers where applicable | api |  |
+| GET | `/api/v1/products` | public; token/cookie checks in auth handlers where applicable | api | |
+| GET | `/api/v1/products/top` | public; token/cookie checks in auth handlers where applicable | api | |
+| GET | `/api/v1/products/search` | public; token/cookie checks in auth handlers where applicable | api | |
+| GET | `/api/v1/products/categories` | public; token/cookie checks in auth handlers where applicable | api | |
+| GET | `/api/v1/products/brands` | public; token/cookie checks in auth handlers where applicable | api | |
 | GET | `/api/v1/products/facets` | public; token/cookie checks in auth handlers where applicable | api | Bounded public specification metadata; exact counts exclude brand/spec selections |
-| GET | `/api/v1/products/featured` | public; token/cookie checks in auth handlers where applicable | api |  |
-| GET | `/api/v1/products/category/:category` | public; token/cookie checks in auth handlers where applicable | api |  |
-| GET | `/api/v1/products/:id` | public; token/cookie checks in auth handlers where applicable | api |  |
-| GET | `/api/v1/products/:id/related` | public; token/cookie checks in auth handlers where applicable | api |  |
-| GET | `/api/v1/products/:id/reviews` | public; token/cookie checks in auth handlers where applicable | api |  |
+| GET | `/api/v1/products/featured` | public; token/cookie checks in auth handlers where applicable | api | |
+| GET | `/api/v1/products/category/:category` | public; token/cookie checks in auth handlers where applicable | api | |
+| GET | `/api/v1/products/:id` | public; token/cookie checks in auth handlers where applicable | api | |
+| GET | `/api/v1/products/:id/related` | public; token/cookie checks in auth handlers where applicable | api | |
+| GET | `/api/v1/products/:id/reviews` | public; token/cookie checks in auth handlers where applicable | api | |
 | GET | `/api/v1/reviews/products/:id/reviews` | public; token/cookie checks in auth handlers where applicable | userAction | Deprecated → `GET /api/v1/products/:id/reviews` |
 | POST | `/api/v1/payment/webhook` | Stripe signature (raw body) | webhook | Stripe signature; isolated from JSON parser, CSRF, and JWT |
 
@@ -70,54 +70,54 @@ The legacy admin `DELETE /products/:id/reviews` interprets `id` as a review ID, 
 
 | Method | Absolute path | Access middleware | Limits | Canonical replacement / notes |
 | --- | --- | --- | --- | --- |
-| POST | `/api/v1/auth/send-verification-email` | protect | auth + sensitiveAuth |  |
-| PATCH | `/api/v1/auth/update-password` | protect → verifiedEmail → twoFactorAuth | auth + sensitiveAuth |  |
-| POST | `/api/v1/auth/2fa/enable` | protect → verifiedEmail | auth + sensitiveAuth |  |
-| POST | `/api/v1/auth/2fa/verify` | protect → verifiedEmail | auth + sensitiveAuth |  |
-| DELETE | `/api/v1/auth/2fa/disable` | protect → verifiedEmail → twoFactorAuth | auth + sensitiveAuth |  |
-| GET | `/api/v1/users/profile` | protect → verifiedEmail | userAction |  |
-| PATCH | `/api/v1/users/profile` | protect → verifiedEmail → twoFactorAuth | userAction |  |
+| POST | `/api/v1/auth/send-verification-email` | protect | auth + sensitiveAuth | |
+| PATCH | `/api/v1/auth/update-password` | protect → verifiedEmail → twoFactorAuth | auth + sensitiveAuth | |
+| POST | `/api/v1/auth/2fa/enable` | protect → verifiedEmail | auth + sensitiveAuth | |
+| POST | `/api/v1/auth/2fa/verify` | protect → verifiedEmail | auth + sensitiveAuth | |
+| DELETE | `/api/v1/auth/2fa/disable` | protect → verifiedEmail → twoFactorAuth | auth + sensitiveAuth | |
+| GET | `/api/v1/users/profile` | protect → verifiedEmail | userAction | |
+| PATCH | `/api/v1/users/profile` | protect → verifiedEmail → twoFactorAuth | userAction | |
 | PATCH | `/api/v1/users/update-me` | protect → verifiedEmail → twoFactorAuth | userAction | Deprecated → `PATCH /api/v1/users/profile` |
 | PATCH | `/api/v1/users/change-password` | protect → verifiedEmail → twoFactorAuth | userAction + sensitiveAuth | Deprecated → `PATCH /api/v1/auth/update-password`; Legacy response does not issue a new token pair; preserved for compatibility. |
-| DELETE | `/api/v1/users/delete-account` | protect → verifiedEmail → twoFactorAuth | userAction |  |
+| DELETE | `/api/v1/users/delete-account` | protect → verifiedEmail → twoFactorAuth | userAction | |
 | DELETE | `/api/v1/users/delete-me` | protect → verifiedEmail → twoFactorAuth | userAction | Deprecated → `DELETE /api/v1/users/delete-account` |
-| GET | `/api/v1/users/wishlist` | protect → verifiedEmail | userAction |  |
-| POST | `/api/v1/users/wishlist/:productId` | protect → verifiedEmail | userAction |  |
-| DELETE | `/api/v1/users/wishlist/:productId` | protect → verifiedEmail | userAction |  |
+| GET | `/api/v1/users/wishlist` | protect → verifiedEmail | userAction | |
+| POST | `/api/v1/users/wishlist/:productId` | protect → verifiedEmail | userAction | |
+| DELETE | `/api/v1/users/wishlist/:productId` | protect → verifiedEmail | userAction | |
 | GET | `/api/v1/users/orders` | protect → verifiedEmail | userAction | Deprecated → `GET /api/v1/orders`; Legacy pagination and response envelope retained. |
 | GET | `/api/v1/users/my-orders` | protect → verifiedEmail | userAction | Deprecated → `GET /api/v1/orders` |
-| GET | `/api/v1/users/addresses` | protect → verifiedEmail | userAction |  |
-| POST | `/api/v1/users/addresses` | protect → verifiedEmail | userAction |  |
-| PATCH | `/api/v1/users/addresses/:id` | protect → verifiedEmail | userAction |  |
-| PATCH | `/api/v1/users/addresses/:id/default` | protect → verifiedEmail | userAction |  |
-| DELETE | `/api/v1/users/addresses/:id` | protect → verifiedEmail | userAction |  |
-| GET | `/api/v1/users/payment-methods` | protect → verifiedEmail | userAction |  |
-| POST | `/api/v1/users/payment-methods` | protect → verifiedEmail | userAction |  |
-| PATCH | `/api/v1/users/payment-methods/:id` | protect → verifiedEmail | userAction |  |
-| PATCH | `/api/v1/users/payment-methods/:id/default` | protect → verifiedEmail | userAction |  |
-| DELETE | `/api/v1/users/payment-methods/:id` | protect → verifiedEmail | userAction |  |
-| POST | `/api/v1/products/:id/reviews` | protect → verifiedEmail → restrictTo | api + userAction |  |
+| GET | `/api/v1/users/addresses` | protect → verifiedEmail | userAction | |
+| POST | `/api/v1/users/addresses` | protect → verifiedEmail | userAction | |
+| PATCH | `/api/v1/users/addresses/:id` | protect → verifiedEmail | userAction | |
+| PATCH | `/api/v1/users/addresses/:id/default` | protect → verifiedEmail | userAction | |
+| DELETE | `/api/v1/users/addresses/:id` | protect → verifiedEmail | userAction | |
+| GET | `/api/v1/users/payment-methods` | protect → verifiedEmail | userAction | |
+| POST | `/api/v1/users/payment-methods` | protect → verifiedEmail | userAction | |
+| PATCH | `/api/v1/users/payment-methods/:id` | protect → verifiedEmail | userAction | |
+| PATCH | `/api/v1/users/payment-methods/:id/default` | protect → verifiedEmail | userAction | |
+| DELETE | `/api/v1/users/payment-methods/:id` | protect → verifiedEmail | userAction | |
+| POST | `/api/v1/products/:id/reviews` | protect → verifiedEmail → restrictTo | api + userAction | |
 | POST | `/api/v1/products/:id/wishlist` | protect → verifiedEmail → restrictTo | api + userAction | Deprecated → `POST /api/v1/users/wishlist/:productId` |
 | DELETE | `/api/v1/products/:id/wishlist` | protect → verifiedEmail → restrictTo | api + userAction | Deprecated → `DELETE /api/v1/users/wishlist/:productId` |
-| GET | `/api/v1/reviews/products/:id/mine` | protect → verifiedEmail | userAction |  |
-| PATCH | `/api/v1/reviews/:reviewId` | protect → verifiedEmail | userAction |  |
-| DELETE | `/api/v1/reviews/:reviewId` | protect → verifiedEmail | userAction |  |
-| GET | `/api/v1/cart` | protect → verifiedEmail | userAction |  |
-| POST | `/api/v1/cart/add` | protect → verifiedEmail | userAction |  |
-| DELETE | `/api/v1/cart` | protect → verifiedEmail | userAction |  |
-| POST | `/api/v1/cart/coupon` | protect → verifiedEmail | userAction |  |
-| DELETE | `/api/v1/cart/coupon` | protect → verifiedEmail | userAction |  |
-| PATCH | `/api/v1/cart/update` | protect → verifiedEmail | userAction |  |
-| DELETE | `/api/v1/cart/remove/:id` | protect → verifiedEmail | userAction |  |
-| GET | `/api/v1/orders` | protect → verifiedEmail | userAction |  |
+| GET | `/api/v1/reviews/products/:id/mine` | protect → verifiedEmail | userAction | |
+| PATCH | `/api/v1/reviews/:reviewId` | protect → verifiedEmail | userAction | |
+| DELETE | `/api/v1/reviews/:reviewId` | protect → verifiedEmail | userAction | |
+| GET | `/api/v1/cart` | protect → verifiedEmail | userAction | |
+| POST | `/api/v1/cart/add` | protect → verifiedEmail | userAction | |
+| DELETE | `/api/v1/cart` | protect → verifiedEmail | userAction | |
+| POST | `/api/v1/cart/coupon` | protect → verifiedEmail | userAction | |
+| DELETE | `/api/v1/cart/coupon` | protect → verifiedEmail | userAction | |
+| PATCH | `/api/v1/cart/update` | protect → verifiedEmail | userAction | |
+| DELETE | `/api/v1/cart/remove/:id` | protect → verifiedEmail | userAction | |
+| GET | `/api/v1/orders` | protect → verifiedEmail | userAction | |
 | POST | `/api/v1/orders` | protect → verifiedEmail | userAction | Stable idempotencyKey required; PayPal unavailable before inventory reservation. |
 | POST | `/api/v1/orders/cancel/:id` | protect → verifiedEmail | userAction | Owner-only atomic cancellation for pending unpaid COD; requires cancel_unpaid_order migration. |
-| POST | `/api/v1/orders/request-return/:id` | protect → verifiedEmail | userAction |  |
-| GET | `/api/v1/orders/:id/payment-status` | protect → verifiedEmail | userAction |  |
-| GET | `/api/v1/orders/:id` | protect → verifiedEmail | userAction |  |
+| POST | `/api/v1/orders/request-return/:id` | protect → verifiedEmail | userAction | |
+| GET | `/api/v1/orders/:id/payment-status` | protect → verifiedEmail | userAction | |
+| GET | `/api/v1/orders/:id` | protect → verifiedEmail | userAction | |
 | POST | `/api/v1/payment/process` | protect → verifiedEmail | payment | Compatibility endpoint; authenticated and CSRF-protected, returns 503 until a verified workflow is available. |
 | POST | `/api/v1/payment/create-intent` | protect → verifiedEmail | payment | Compatibility endpoint; authenticated and CSRF-protected, returns 503 until a verified workflow is available. |
-| POST | `/api/v1/payment/create-stripe-session` | protect → verifiedEmail | payment |  |
+| POST | `/api/v1/payment/create-stripe-session` | protect → verifiedEmail | payment | |
 | POST | `/api/v1/payment/create-order-cod` | protect → verifiedEmail | payment | Compatibility endpoint; authenticated and CSRF-protected, returns 503 until a verified workflow is available. |
 | POST | `/api/v1/payment/paypal/create-order` | protect → verifiedEmail | payment | Compatibility endpoint; authenticated and CSRF-protected, returns 503 until a verified workflow is available. |
 | POST | `/api/v1/payment/paypal/capture-order` | protect → verifiedEmail | payment | Compatibility endpoint; authenticated and CSRF-protected, returns 503 until a verified workflow is available. |
@@ -128,50 +128,50 @@ The legacy admin `DELETE /products/:id/reviews` interprets `id` as a review ID, 
 
 | Method | Absolute path | Access middleware | Limits | Canonical replacement / notes |
 | --- | --- | --- | --- | --- |
-| GET | `/api/v1/admin/analytics/overview` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| GET | `/api/v1/admin/analytics/sales` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| GET | `/api/v1/admin/analytics/users` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| GET | `/api/v1/admin/analytics/orders` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| GET | `/api/v1/admin/analytics/products` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| GET | `/api/v1/admin/analytics/inventory` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| POST | `/api/v1/admin/users` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| GET | `/api/v1/admin/users` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| GET | `/api/v1/admin/users/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| PATCH | `/api/v1/admin/users/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| DELETE | `/api/v1/admin/users/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| GET | `/api/v1/admin/products` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| POST | `/api/v1/admin/products` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| PATCH | `/api/v1/admin/products/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| DELETE | `/api/v1/admin/products/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| PATCH | `/api/v1/admin/products/:id/toggle-active` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| PATCH | `/api/v1/admin/products/:id/feature` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| PATCH | `/api/v1/admin/products/:id/stock` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| GET | `/api/v1/admin/products/:id/reviews` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
+| GET | `/api/v1/admin/analytics/overview` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| GET | `/api/v1/admin/analytics/sales` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| GET | `/api/v1/admin/analytics/users` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| GET | `/api/v1/admin/analytics/orders` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| GET | `/api/v1/admin/analytics/products` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| GET | `/api/v1/admin/analytics/inventory` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| POST | `/api/v1/admin/users` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| GET | `/api/v1/admin/users` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| GET | `/api/v1/admin/users/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| PATCH | `/api/v1/admin/users/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| DELETE | `/api/v1/admin/users/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| GET | `/api/v1/admin/products` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| POST | `/api/v1/admin/products` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| PATCH | `/api/v1/admin/products/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| DELETE | `/api/v1/admin/products/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| PATCH | `/api/v1/admin/products/:id/toggle-active` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| PATCH | `/api/v1/admin/products/:id/feature` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| PATCH | `/api/v1/admin/products/:id/stock` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| GET | `/api/v1/admin/products/:id/reviews` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
 | DELETE | `/api/v1/admin/products/:id/reviews` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | Deprecated → `DELETE /api/v1/admin/reviews/:id`; Legacy id means REVIEW id, not product id; never bulk-deletes product reviews. |
-| GET | `/api/v1/admin/orders` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| GET | `/api/v1/admin/orders/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| PATCH | `/api/v1/admin/orders/:id/update-status` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| PATCH | `/api/v1/admin/orders/:id/mark-paid` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| PATCH | `/api/v1/admin/orders/:id/mark-delivered` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| PATCH | `/api/v1/admin/orders/:id/refund` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| PATCH | `/api/v1/admin/orders/:id/approve-return` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
+| GET | `/api/v1/admin/orders` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| GET | `/api/v1/admin/orders/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| PATCH | `/api/v1/admin/orders/:id/update-status` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| PATCH | `/api/v1/admin/orders/:id/mark-paid` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| PATCH | `/api/v1/admin/orders/:id/mark-delivered` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| PATCH | `/api/v1/admin/orders/:id/refund` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| PATCH | `/api/v1/admin/orders/:id/approve-return` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
 | POST | `/api/v1/admin/orders/:id/refund` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | Deprecated → `PATCH /api/v1/admin/orders/:id/refund` |
-| PUT | `/api/v1/admin/orders/:id/process-return` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| POST | `/api/v1/admin/coupons` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| GET | `/api/v1/admin/coupons` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| GET | `/api/v1/admin/coupons/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| PATCH | `/api/v1/admin/coupons/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| DELETE | `/api/v1/admin/coupons/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| PATCH | `/api/v1/admin/coupons/:id/toggle` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| GET | `/api/v1/admin/reviews` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| PATCH | `/api/v1/admin/reviews/:id/moderate` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| DELETE | `/api/v1/admin/reviews/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin |  |
-| GET | `/api/v1/admin/logs` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin + log |  |
-| GET | `/api/v1/admin/logs/dates/available` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin + log |  |
-| GET | `/api/v1/admin/logs/stats` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin + log |  |
-| GET | `/api/v1/admin/logs/errors` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin + log |  |
-| GET | `/api/v1/admin/logs/access` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin + log |  |
-| GET | `/api/v1/admin/logs/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin + log |  |
+| PUT | `/api/v1/admin/orders/:id/process-return` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| POST | `/api/v1/admin/coupons` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| GET | `/api/v1/admin/coupons` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| GET | `/api/v1/admin/coupons/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| PATCH | `/api/v1/admin/coupons/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| DELETE | `/api/v1/admin/coupons/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| PATCH | `/api/v1/admin/coupons/:id/toggle` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| GET | `/api/v1/admin/reviews` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| PATCH | `/api/v1/admin/reviews/:id/moderate` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| DELETE | `/api/v1/admin/reviews/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin | |
+| GET | `/api/v1/admin/logs` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin + log | |
+| GET | `/api/v1/admin/logs/dates/available` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin + log | |
+| GET | `/api/v1/admin/logs/stats` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin + log | |
+| GET | `/api/v1/admin/logs/errors` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin + log | |
+| GET | `/api/v1/admin/logs/access` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin + log | |
+| GET | `/api/v1/admin/logs/:id` | protect → restrictTo:admin → verifiedEmail → twoFactorAuth | admin + log | |
 
 ## Development only (admin) (4 operations)
 

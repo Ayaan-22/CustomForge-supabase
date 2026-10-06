@@ -92,7 +92,7 @@ Feature styles load from their owning route/component. Use the [component guide]
 
 - Brand: edit the inline mark/wordmark in [brand.tsx](../client/components/forge/brand.tsx) and the [favicon](../client/public/forge-icon.svg).
 - Hero: replace [custom-gaming-pc-hero-image.jpg](../client/public/custom-gaming-pc-hero-image.jpg), used by hero-scene.tsx as the image and video poster. Optional video uses `NEXT_PUBLIC_HERO_VIDEO`; it stays muted/looped, pauses outside the viewport and falls back on error or reduced motion.
-- Product media: edit the catalog product's image URLs. Rich media is keyed by exact SKU in [product-media.ts](../client/lib/product-media.ts); local files belong under client/public/media/products/<sku>/. Empty entries keep the real gallery; do not imply a 360-degree view exists when frames are absent.
+- Product media: edit the catalog product's image URLs. Rich media is keyed by exact SKU in [product-media.ts](../client/lib/product-media.ts); local files belong under `client/public/media/products/<sku>/`. Empty entries keep the real gallery; do not imply a 360-degree view exists when frames are absent.
 - Authentication artwork: edit the inline SVG in auth-shell.tsx. Decorative art must not interfere with form labels or focus.
 
 Use the shared [accessibility, motion and data rules](README.md). Supported payment/security operations remain those in the application and [root setup guide](../README.md).

@@ -73,7 +73,7 @@ Tables: users, user_addresses, user_payment_methods, products, games, prebuilt_p
 
 No committed environment example files currently exist; [README.md](README.md) contains placeholder setup templates. Keep actual credentials/project IDs/personal paths out of public docs.
 
-Server settings: NODE_ENV, PORT, CLIENT_URL, ADMIN_URL; **SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_JWT_SECRET**; JWT_SECRET, JWT_ALGORITHM, JWT_SHORT_EXPIRES_IN, JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN, JWT_REFRESH_COOKIE_EXPIRES_IN; CSRF_SECRET; STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET; EMAIL_HOST, EMAIL_PORT, EMAIL_USERNAME, EMAIL_PASSWORD, EMAIL_FROM; CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET; supported RATE_/LOG_ settings. See detailed context/source for exact options. Next uses server-only API_BACKEND_URL. Import-time initialization needs required configuration even for COD development; never disable TLS verification.
+Server settings: NODE_ENV, PORT, CLIENT_URL, ADMIN_URL; **SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_JWT_SECRET**; JWT_SECRET, JWT_ALGORITHM, JWT_SHORT_EXPIRES_IN, JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN, JWT_REFRESH_COOKIE_EXPIRES_IN; CSRF_SECRET; STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET; EMAIL_HOST, EMAIL_PORT, EMAIL_USERNAME, EMAIL_PASSWORD, EMAIL_FROM; CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET; supported `RATE_`/`LOG_` settings. See detailed context/source for exact options. Next uses server-only API_BACKEND_URL. Import-time initialization needs required configuration even for COD development; never disable TLS verification.
 
 From root, run each app in its own terminal:
 
