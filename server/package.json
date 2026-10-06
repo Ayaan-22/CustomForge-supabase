@@ -6,10 +6,14 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
+    "dev": "node --watch server.js",
     "test": "vitest --run",
     "test:watch": "vitest",
-    "seed": "node seed/seed.js"
+    "test:security": "vitest --run tests/security/routeSurface.security.test.js tests/security/leastPrivilege.security.test.js tests/security/publicCatalog.security.test.js",
+    "docs:routes": "node scripts/docs/generate-route-map.js",
+    "test:rls": "node scripts/tests/run-rls-tests.js",
+    "seed": "node scripts/catalog/seed-demo-catalog.js",
+    "check:db-architecture": "node scripts/checks/enforce-db-architecture.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.5",
@@ -28,7 +32,7 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "multer": "^2.0.2",
-    "nodemailer": "^7.0.10",
+    "nodemailer": "^10.0.13",
     "pug": "^3.0.2",
     "speakeasy": "^2.0.0",
     "streamifier": "^0.1.1",
@@ -37,14 +41,17 @@
     "validator": "^13.11.0",
     "winston": "^3.13.0",
     "winston-daily-rotate-file": "^5.0.0",
-    "xss-clean": "^0.1.4"
+    "xss-clean": "^0.1.4",
+    "zod": "^4.4.1"
   },
   "devDependencies": {
-    "nodemon": "^3.1.0",
-    "vitest": "^3.0.0",
-    "fast-check": "^3.15.0"
+    "fast-check": "^3.15.0",
+    "vitest": "4.1.11"
   },
   "keywords": [],
   "author": "Ayaan Irfan",
-  "license": "ISC"
+  "license": "ISC",
+  "engines": {
+    "node": ">=22"
+  }
 }

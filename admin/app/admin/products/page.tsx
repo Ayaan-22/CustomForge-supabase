@@ -1,14 +1,28 @@
 "use client";
+import { useUrlState } from "@/hooks/use-url-state";
+import type { AdminProduct } from "@/types/admin";
+import { useAdminMutation } from "@/hooks/use-admin-mutation";
+import { useConfirmation } from "@/hooks/use-confirmation";
 
-import { useState, useEffect } from "react";
+import { useAdminQuery } from '@/hooks/use-admin-query';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { QueryError } from '@/components/patterns/query-error';
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus } from "lucide-react";
+import { Plus, Package, Search, LayoutGrid, List, Eye, Edit2, Boxes, SlidersHorizontal } from "lucide-react";
+import { SectionHeader } from "@/components/patterns/section-header";
+import { PageShell } from "@/components/patterns/page-shell";
+import { ActionBar } from "@/components/patterns/action-bar";
+import { Pagination } from "@/components/patterns/pagination";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import "../forge-commerce.css";
 import { ProductModal } from "../components/product-modal";
 import { ProductDetailsModal } from "../components/product-details-modal";
 import { ProductCard } from "../components/product-card";
 import { apiClient } from "@/lib/api-client";
+import { isLowStock } from "@/lib/commerce-policy";
 import { useToast } from "@/hooks/use-toast";
 
 const PRODUCT_CATEGORIES = [
@@ -50,81 +64,43 @@ const PRODUCT_CATEGORIES = [
 
 export default function ProductsPage() {
   const { toast } = useToast();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(12);
+  const runMutation = useAdminMutation();
+  const { confirm: requestConfirmation, confirmationDialog } = useConfirmation();
+  const [searchTerm, setSearchTerm] = useUrlState("searchTerm", "");
+  const [categoryFilter, setCategoryFilter] = useUrlState("categoryFilter", "all");
+  const [statusFilter, setStatusFilter] = useUrlState("statusFilter", "all");
+  const [page, setPage] = useUrlState("page", 1);
+  const [limit, setLimit] = useUrlState("limit", 12);
 
-  const [products, setProducts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalProducts, setTotalProducts] = useState(0);
-  const [productStats, setProductStats] = useState<any>(null);
 
+  const [view, setView] = useState<"grid" | "list">("grid");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [detailsProduct, setDetailsProduct] = useState<any>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
-  const fetchProducts = async () => {
-    setLoading(true);
-    try {
-      const query: any = {
-        page,
-        limit,
-        sortBy: "created_at",
-        sortOrder: "desc",
-      };
+  const search = useDebouncedValue(searchTerm);
+  const filters = { page, limit, search: search, category: categoryFilter === 'all' ? undefined : categoryFilter, isActive: statusFilter === 'all' ? undefined : String(statusFilter === 'active'), sortBy: 'created_at', sortOrder: 'desc' };
+  const listQuery = useAdminQuery(['products', filters], () => apiClient.getProducts(filters));
+  const statsQuery = useAdminQuery(['analytics', 'products'], () => apiClient.getProductStats());
+  const products: AdminProduct[] = listQuery.data?.data ?? [];
+  const totalPages = listQuery.data?.pages ?? 1;
+  const totalProducts = listQuery.data?.count ?? 0;
+  const productStats = statsQuery.data;
+  const loading = listQuery.isLoading;
+  const fetchProducts = () => { void listQuery.refetch(); void statsQuery.refetch(); };
 
-      if (searchTerm) query.search = searchTerm;
-      if (categoryFilter !== "all") query.category = categoryFilter;
-      if (statusFilter !== "all")
-        query.isActive = statusFilter === "active" ? "true" : "false";
-
-      const [productsData, statsData] = await Promise.all([
-        apiClient.getProducts(query),
-        apiClient.getProductStats(),
-      ]);
-
-      setProducts(productsData.data);
-      setTotalPages(productsData.pages);
-      setTotalProducts(productsData.count);
-      setProductStats(statsData);
-    } catch (error) {
-      console.error("Failed to fetch products:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch products",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchProducts();
-  }, [page, limit, categoryFilter, statusFilter]);
-
-  // Debounce search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchProducts();
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
 
   const handleAddProduct = async (newProduct: any) => {
     try {
       if (editingProduct) {
-        await apiClient.updateProduct(editingProduct.id, newProduct);
+        await runMutation(() => apiClient.updateProduct(editingProduct.id, newProduct));
         toast({
           title: "Success",
           description: "Product updated successfully",
         });
       } else {
-        await apiClient.createProduct(newProduct);
+        await runMutation(() => apiClient.createProduct(newProduct));
         toast({
           title: "Success",
           description: "Product created successfully",
@@ -143,9 +119,9 @@ export default function ProductsPage() {
   };
 
   const handleDeleteProduct = async (id: string) => {
-    if (confirm("Are you sure you want to delete this product?")) {
+    if (await requestConfirmation({ title: "Delete this product?", description: "This permanently removes the product from your catalogue. This action cannot be undone.", confirmLabel: "Delete product" })) {
       try {
-        await apiClient.deleteProduct(Number(id)); // Assuming ID is number based on api-client
+        await runMutation(() => apiClient.deleteProduct(id)); // Assuming ID is number based on api-client
         toast({
           title: "Success",
           description: "Product deleted successfully",
@@ -163,7 +139,7 @@ export default function ProductsPage() {
 
   const handleToggleVisibility = async (id: string) => {
     try {
-      await apiClient.toggleProductActive(Number(id));
+      await runMutation(() => apiClient.toggleProductActive(id));
       toast({ title: "Success", description: "Product status updated" });
       fetchProducts();
     } catch (error: any) {
@@ -186,164 +162,137 @@ export default function ProductsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Products</h1>
-          <p className="text-[#A0A0A8] mt-1">Manage your product inventory</p>
-        </div>
-        <Button
-          onClick={() => {
-            setEditingProduct(null);
-            setIsModalOpen(true);
-          }}
-          className="bg-gradient-to-r from-[#7C3AED] to-[#3B82F6] hover:shadow-lg hover:shadow-purple-500/20"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Add Product
-        </Button>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-4">
-        <Input
-          placeholder="Search by name, SKU, or brand..."
-          value={searchTerm}
-          onChange={(e) => {
-            setSearchTerm(e.target.value);
-            setPage(1);
-          }}
-          className="bg-[#1F1F28] border-[#2A2A35] text-white placeholder:text-[#A0A0A8]"
-        />
-
-        <select
-          value={categoryFilter}
-          onChange={(e) => {
-            setCategoryFilter(e.target.value);
-            setPage(1);
-          }}
-          className="px-4 py-2 bg-[#1F1F28] border border-[#2A2A35] text-white rounded-lg"
-        >
-          <option value="all">All Categories</option>
-          {PRODUCT_CATEGORIES.map((cat) => (
-            <option key={cat} value={cat}>
-              {cat}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={statusFilter}
-          onChange={(e) => {
-            setStatusFilter(e.target.value);
-            setPage(1);
-          }}
-          className="px-4 py-2 bg-[#1F1F28] border border-[#2A2A35] text-white rounded-lg"
-        >
-          <option value="all">All Status</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-        </select>
-      </div>
-
-      {/* Products Grid */}
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500"></div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {products.map((product) => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              onView={handleViewDetails}
-              onEdit={handleEditProduct}
-              onDelete={handleDeleteProduct}
-              onToggleVisibility={handleToggleVisibility}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Pagination */}
-      {!loading && (
-        <div className="flex items-center justify-between mt-6">
-          <div className="text-sm text-[#A0A0A8]">
-            Showing {products.length === 0 ? 0 : (page - 1) * limit + 1} to{" "}
-            {Math.min(page * limit, totalProducts)} of {totalProducts} products
-          </div>
-          <div className="flex gap-2">
-            <Button
-              onClick={() => setPage(Math.max(1, page - 1))}
-              disabled={page === 1}
-              variant="outline"
-              size="sm"
-            >
-              Previous
-            </Button>
-            <Button
-              onClick={() => setPage(Math.min(totalPages, page + 1))}
-              disabled={page === totalPages}
-              variant="outline"
-              size="sm"
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Inventory Summary */}
+    <PageShell className="fc-page">
+      <SectionHeader eyebrow="Commerce / Inventory" icon={<Boxes size={20} />} title="Product inventory" description="Curate the storefront. Keep every SKU, price and stock level in sync." actions={<Button onClick={() => { setEditingProduct(null); setIsModalOpen(true); }}>
+        <Plus size={16} />Add product</Button>} />
+      <QueryError error={listQuery.error || statsQuery.error} retry={fetchProducts} />
       {productStats && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="glass-dark p-6 border-[#2A2A35]">
-            <p className="text-[#A0A0A8] text-sm font-medium">Total Products</p>
-            <p className="text-2xl font-bold text-white mt-2">
-              {productStats.totalProducts}
-            </p>
+        <div className="fa-stat-grid">
+          <Card className="fa-stat">
+            <span>Products</span>
+            <strong>{productStats.totalProducts}</strong>
+            <small>Complete inventory</small>
           </Card>
-          <Card className="glass-dark p-6 border-[#2A2A35]">
-            <p className="text-[#A0A0A8] text-sm font-medium">
-              Low Stock Items
-            </p>
-            <p className="text-2xl font-bold text-yellow-400 mt-2">
-              {productStats.lowStock}
-            </p>
+          <Card className="fa-stat">
+            <span>Published</span>
+            <strong className="fc-cyan">{productStats.activeProducts}</strong>
+            <small>Visible on the storefront</small>
           </Card>
-          <Card className="glass-dark p-6 border-[#2A2A35]">
-            <p className="text-[#A0A0A8] text-sm font-medium">Out of Stock</p>
-            <p className="text-2xl font-bold text-red-400 mt-2">
-              {productStats.outOfStock}
-            </p>
+          <Card className="fa-stat">
+            <span>Low stock</span>
+            <strong className="fc-amber">{productStats.lowStock}</strong>
+            <small>1–5 available units</small>
           </Card>
-          <Card className="glass-dark p-6 border-[#2A2A35]">
-            <p className="text-[#A0A0A8] text-sm font-medium">
-              Active Products
-            </p>
-            <p className="text-2xl font-bold text-blue-400 mt-2">
-              {productStats.activeProducts}
-            </p>
+          <Card className="fa-stat">
+            <span>Out of stock</span>
+            <strong className="fc-red">{productStats.outOfStock}</strong>
+            <small>Needs replenishment</small>
           </Card>
         </div>
       )}
-
-      <ProductModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setEditingProduct(null);
-        }}
-        onSubmit={handleAddProduct}
-        initialData={editingProduct}
-        isEditing={!!editingProduct}
-      />
-
-      <ProductDetailsModal
-        isOpen={isDetailsOpen}
-        onClose={() => setIsDetailsOpen(false)}
-        product={detailsProduct}
-      />
-    </div>
+      <ActionBar layout="filters" className="fc-filters">
+        <div className="fa-field"><label htmlFor="products-search">Search products</label><div className="fc-search">
+          <Search size={17} aria-hidden="true" />
+          <Input id="products-search" aria-label="Search products" placeholder="Search name, SKU or brand…" value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }} />
+        </div></div>
+        <div className="fa-field"><label htmlFor="products-category">Category</label><Select value={categoryFilter} onValueChange={(value) => { setCategoryFilter(value); setPage(1); }}>
+          <SelectTrigger id="products-category" aria-label="Filter product category">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>{["all", ...PRODUCT_CATEGORIES].map((cat) => <SelectItem key={cat} value={cat}>{cat === "all" ? "All categories" : cat}</SelectItem>)}</SelectContent>
+        </Select></div>
+        <div className="fa-field"><label htmlFor="products-visibility">Visibility</label><Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setPage(1); }}>
+          <SelectTrigger id="products-visibility" aria-label="Filter product visibility">
+            <SlidersHorizontal size={15} />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All visibility</SelectItem>
+            <SelectItem value="active">Published</SelectItem>
+            <SelectItem value="inactive">Hidden</SelectItem>
+          </SelectContent>
+        </Select></div>
+      </ActionBar>
+      <section className="fa-panel fc-catalog-panel" aria-label="Product catalogue">
+        <div className="fa-panel-heading">
+          <div>
+            <h2>Catalogue</h2>
+            <p>{totalProducts} matching products</p>
+          </div>
+          <div className="fa-segmented" role="group" aria-label="Product view">
+            <Button variant="outline" size="icon" aria-label="Grid view" aria-pressed={view === "grid"} onClick={() => setView("grid")}>
+              <LayoutGrid size={17} />
+            </Button>
+            <Button variant="outline" size="icon" aria-label="List view" aria-pressed={view === "list"} onClick={() => setView("list")}>
+              <List size={17} />
+            </Button>
+          </div>
+        </div>
+        {loading ? <div className="fc-product-grid" aria-label="Loading products" aria-busy="true">{Array.from({ length: 6 }, (_, i) =>
+          <div key={i} className="fc-product-skeleton">
+            <div />
+            <span />
+            <span />
+          </div>)}</div> : products.length === 0 ? (
+            <div className="fc-empty">
+              <Package size={34} />
+              <h3>No products found</h3>
+              <p>{searchTerm || categoryFilter !== "all" || statusFilter !== "all" ? "Try another search or clear your filters." : "Add your first product to bring the catalogue to life."}</p>{searchTerm || categoryFilter !== "all" || statusFilter !== "all" ? <Button variant="outline" onClick={() => { setSearchTerm(""); setCategoryFilter("all"); setStatusFilter("all"); setPage(1); }}>Clear filters</Button> : <Button onClick={() => { setEditingProduct(null); setIsModalOpen(true); }}>
+                <Plus size={16} />Add product</Button>}</div>
+          ) : view === "grid" ? (
+            <div className="fc-product-grid">{products.map((product) => <ProductCard key={product.id} product={product} onView={handleViewDetails} onEdit={handleEditProduct} onDelete={handleDeleteProduct} onToggleVisibility={handleToggleVisibility} />)}</div>
+          ) : (
+          <div className="fa-table-scroll" role="region" aria-label="Product catalogue" tabIndex={0}>
+            <table className="fa-data-table fc-product-table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Price</th>
+                  <th>Inventory</th>
+                  <th>Visibility</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>{products.map((product) => <tr key={product.id}>
+                <td>
+                  <div className="fc-table-product">{product.images?.[0] ? <img src={product.images[0]} alt="" loading="lazy" /> : <span>
+                    <Package size={20} />
+                  </span>}<div>
+                      <strong>{product.name}</strong>
+                      <small>{product.sku} · {product.category}</small>
+                    </div>
+                  </div>
+                </td>
+                <td className="fc-numeric">${Number(product.finalPrice).toFixed(2)}</td>
+                <td>
+                  <span className={`fa-status ${product.stock === 0 ? "is-danger" : isLowStock(product.stock) ? "is-warning" : "is-success"}`}>{product.stock} units</span>
+                </td>
+                <td>
+                  <span className={`fa-status ${product.isActive ? "is-success" : "is-neutral"}`}>{product.isActive ? "Published" : "Hidden"}</span>
+                </td>
+                <td>
+                  <div className="fc-table-actions">
+                    <Button variant="outline" size="icon" aria-label={`View ${product.name}`} onClick={() => handleViewDetails(product)}>
+                      <Eye size={16} />
+                    </Button>
+                    <Button variant="outline" size="icon" aria-label={`Edit ${product.name}`} onClick={() => handleEditProduct(product)}>
+                      <Edit2 size={16} />
+                    </Button>
+                  </div>
+                </td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+        )}
+        {!loading && <Pagination page={page} pages={totalPages} pending={listQuery.isFetching} onPage={setPage} total={totalProducts} pageSize={limit} noun="products"
+          pageSizeControl={<Select value={String(limit)} disabled={listQuery.isFetching} onValueChange={(value) => { setLimit(Number(value)); setPage(1); }}>
+            <SelectTrigger aria-label="Products per page"><SelectValue /></SelectTrigger>
+            <SelectContent>{[12, 24, 48].map((size) => <SelectItem key={size} value={String(size)}>{size} per page</SelectItem>)}</SelectContent>
+          </Select>} />}
+      </section>
+      <ProductModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingProduct(null); }} onSubmit={handleAddProduct} initialData={editingProduct} isEditing={!!editingProduct} />
+      <ProductDetailsModal isOpen={isDetailsOpen} onClose={() => setIsDetailsOpen(false)} product={detailsProduct} />
+      {confirmationDialog}
+    </PageShell>
   );
 }

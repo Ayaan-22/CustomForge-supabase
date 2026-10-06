@@ -1,6 +1,10 @@
+import {validatePaymentMetadata} from "../utils/paymentMetadata.js";
 // server/models/User.js
-import { supabase } from "../config/db.js";
 import bcrypt from "bcryptjs";
+const requireClient = (client) => {
+  if (!client) throw new Error("Supabase client is required");
+  return client;
+};
 
 /**
  * Map DB row → camelCase user domain object
@@ -28,6 +32,8 @@ const mapUserRow = (row) => {
     // Optional extra fields (only if they exist in DB):
     stripeCustomerId: row.stripe_customer_id || null,
     paymentMethods: row.payment_methods || null,
+    refreshTokenHash: row.refresh_token_hash || null,
+    refreshTokenExpires: row.refresh_token_expires || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -37,7 +43,8 @@ const mapUserRow = (row) => {
    BASIC USER CRUD
 =========================================================== */
 
-export const createUser = async (payload) => {
+export const createUser = async (payload, client) => {
+  const db = requireClient(client);
   // Hash password if provided and not already hashed
   let hashedPassword = payload.password;
   if (payload.password && !payload.password.startsWith("$2")) {
@@ -61,9 +68,11 @@ export const createUser = async (payload) => {
     two_factor_enabled: payload.twoFactorEnabled ?? false,
     two_factor_secret: payload.twoFactorSecret ?? null,
     active: payload.active ?? true,
+    refresh_token_hash: payload.refreshTokenHash ?? null,
+    refresh_token_expires: payload.refreshTokenExpires ?? null,
   };
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("users")
     .insert([dataToInsert])
     .select()
@@ -73,15 +82,16 @@ export const createUser = async (payload) => {
   return mapUserRow(data);
 };
 
-export const findUserByEmail = async (email, options = {}) => {
+export const findUserByEmail = async (email, options = {}, client) => {
+  const db = requireClient(client);
   const { includePassword = false } = options;
 
   // Select all fields - will include optional columns if they exist
   const selectFields = includePassword
     ? "*"
-    : "id, name, email, role, avatar, phone, address, is_email_verified, email_verification_token, email_verification_expires, password_reset_token, password_reset_expires, password_changed_at, two_factor_enabled, two_factor_secret, active, created_at, updated_at";
+    : "id, name, email, role, avatar, phone, address, is_email_verified, email_verification_token, email_verification_expires, password_reset_token, password_reset_expires, password_changed_at, two_factor_enabled, two_factor_secret, active, stripe_customer_id, payment_methods, refresh_token_hash, refresh_token_expires, created_at, updated_at";
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("users")
     .select(selectFields)
     .ilike("email", email.trim())
@@ -92,15 +102,16 @@ export const findUserByEmail = async (email, options = {}) => {
   return mapUserRow(data);
 };
 
-export const findUserById = async (id, options = {}) => {
+export const findUserById = async (id, options = {}, client) => {
+  const db = requireClient(client);
   const { includePassword = false } = options;
 
   // Select all fields - will include optional columns if they exist
   const selectFields = includePassword
     ? "*"
-    : "id, name, email, role, avatar, phone, address, is_email_verified, email_verification_token, email_verification_expires, password_reset_token, password_reset_expires, password_changed_at, two_factor_enabled, two_factor_secret, active, created_at, updated_at";
+    : "id, name, email, role, avatar, phone, address, is_email_verified, email_verification_token, email_verification_expires, password_reset_token, password_reset_expires, password_changed_at, two_factor_enabled, two_factor_secret, active, stripe_customer_id, payment_methods, refresh_token_hash, refresh_token_expires, created_at, updated_at";
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("users")
     .select(selectFields)
     .eq("id", id)
@@ -127,7 +138,8 @@ export const hashPassword = async (password) => {
   return await bcrypt.hash(password, salt);
 };
 
-export const updateUser = async (id, updates) => {
+export const updateUser = async (id, updates, client) => {
+  const db = requireClient(client);
   const dbUpdates = {
     name: updates.name,
     email: updates.email,
@@ -155,6 +167,12 @@ export const updateUser = async (id, updates) => {
   if (updates.paymentMethods !== undefined) {
     dbUpdates.payment_methods = updates.paymentMethods;
   }
+  if (updates.refreshTokenHash !== undefined) {
+    dbUpdates.refresh_token_hash = updates.refreshTokenHash;
+  }
+  if (updates.refreshTokenExpires !== undefined) {
+    dbUpdates.refresh_token_expires = updates.refreshTokenExpires;
+  }
 
   // Hash password if provided and not already hashed
   if (updates.password && !updates.password.startsWith("$2")) {
@@ -167,7 +185,7 @@ export const updateUser = async (id, updates) => {
     (key) => dbUpdates[key] === undefined && delete dbUpdates[key]
   );
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("users")
     .update(dbUpdates)
     .eq("id", id)
@@ -203,8 +221,9 @@ const mapAddressRow = (row) => {
   };
 };
 
-export const getUserAddresses = async (userId) => {
-  const { data, error } = await supabase
+export const getUserAddresses = async (userId, client) => {
+  const db = requireClient(client);
+  const { data, error } = await db
     .from("user_addresses")
     .select("*")
     .eq("user_id", userId)
@@ -214,7 +233,8 @@ export const getUserAddresses = async (userId) => {
   return data.map(mapAddressRow);
 };
 
-export const addUserAddress = async (userId, address) => {
+export const addUserAddress = async (userId, address, client) => {
+  const db = requireClient(client);
   const payload = {
     user_id: userId,
     label: address.label ?? "Home",
@@ -229,13 +249,13 @@ export const addUserAddress = async (userId, address) => {
   };
 
   if (payload.is_default) {
-    await supabase
+    await db
       .from("user_addresses")
       .update({ is_default: false })
       .eq("user_id", userId);
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("user_addresses")
     .insert([payload])
     .select()
@@ -245,17 +265,16 @@ export const addUserAddress = async (userId, address) => {
   return mapAddressRow(data);
 };
 
-export const setDefaultAddress = async (userId, addressId) => {
-  const client = supabase;
-
-  const { error: clearError } = await client
+export const setDefaultAddress = async (userId, addressId, client) => {
+  const db = requireClient(client);
+  const { error: clearError } = await db
     .from("user_addresses")
     .update({ is_default: false })
     .eq("user_id", userId);
 
   if (clearError) throw new Error(clearError.message);
 
-  const { data, error } = await client
+  const { data, error } = await db
     .from("user_addresses")
     .update({ is_default: true })
     .eq("user_id", userId)
@@ -272,8 +291,9 @@ export const setDefaultAddress = async (userId, addressId) => {
    (user_payment_methods table)
 =========================================================== */
 
-export const getUserPaymentMethods = async (userId) => {
-  const { data, error } = await supabase
+export const getUserPaymentMethods = async (userId, client) => {
+  const db = requireClient(client);
+  const { data, error } = await db
     .from("user_payment_methods")
     .select("*")
     .eq("user_id", userId)
@@ -283,7 +303,9 @@ export const getUserPaymentMethods = async (userId) => {
   return data;
 };
 
-export const addUserPaymentMethod = async (userId, method) => {
+export const addUserPaymentMethod = async (userId, method, client) => {
+  validatePaymentMetadata(method);
+  const db = requireClient(client);
   const payload = {
     user_id: userId,
     type: method.type,
@@ -296,13 +318,13 @@ export const addUserPaymentMethod = async (userId, method) => {
   };
 
   if (payload.is_default) {
-    await supabase
+    await db
       .from("user_payment_methods")
       .update({ is_default: false })
       .eq("user_id", userId);
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("user_payment_methods")
     .insert([payload])
     .select()
@@ -312,15 +334,16 @@ export const addUserPaymentMethod = async (userId, method) => {
   return data;
 };
 
-export const setDefaultPaymentMethod = async (userId, methodId) => {
-  const { error: clearError } = await supabase
+export const setDefaultPaymentMethod = async (userId, methodId, client) => {
+  const db = requireClient(client);
+  const { error: clearError } = await db
     .from("user_payment_methods")
     .update({ is_default: false })
     .eq("user_id", userId);
 
   if (clearError) throw new Error(clearError.message);
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("user_payment_methods")
     .update({ is_default: true })
     .eq("user_id", userId)
@@ -336,8 +359,9 @@ export const setDefaultPaymentMethod = async (userId, methodId) => {
    USER WISHLIST
 =========================================================== */
 
-export const getWishlist = async (userId) => {
-  const { data, error } = await supabase
+export const getWishlist = async (userId, client) => {
+  const db = requireClient(client);
+  const { data, error } = await db
     .from("user_wishlist")
     .select("product_id")
     .eq("user_id", userId);
@@ -346,8 +370,9 @@ export const getWishlist = async (userId) => {
   return data.map((row) => row.product_id);
 };
 
-export const addToWishlist = async (userId, productId) => {
-  const { error } = await supabase
+export const addToWishlist = async (userId, productId, client) => {
+  const db = requireClient(client);
+  const { error } = await db
     .from("user_wishlist")
     .insert([{ user_id: userId, product_id: productId }]);
 
@@ -358,8 +383,9 @@ export const addToWishlist = async (userId, productId) => {
   return true;
 };
 
-export const removeFromWishlist = async (userId, productId) => {
-  const { error } = await supabase
+export const removeFromWishlist = async (userId, productId, client) => {
+  const db = requireClient(client);
+  const { error } = await db
     .from("user_wishlist")
     .delete()
     .eq("user_id", userId)

@@ -1,387 +1,105 @@
 "use client";
-import { useState, useEffect } from "react";
+
+import dynamic from "next/dynamic";
+import Link from "next/link";
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
-  TrendingUp,
-  TrendingDown,
-  Users,
-  Package,
-  AlertCircle,
+  ArrowUpRight, CircleDollarSign, ShoppingBag, TrendingUp, TrendingDown,
+  Users, Package, AlertTriangle, CircleCheck, Info, RefreshCw,
 } from "lucide-react";
-import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
-import { apiClient } from "@/lib/api-client";
+import { useDashboardOverview } from "@/hooks/use-dashboard-overview";
+import { ErrorState } from "@/components/patterns/error-state";
+import { LoadingSkeleton } from "@/components/patterns/loading-skeleton";
+import { ActionBar } from "@/components/patterns/action-bar";
+import "../forge-insights.css";
+
+const DashboardCharts = dynamic(
+  () => import("./dashboard-charts").then((m) => ({ default: m.DashboardCharts })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="fi-chart-grid" aria-busy="true" aria-label="Loading performance charts">
+        <Skeleton className="h-[350px] w-full rounded-xl" />
+        <Skeleton className="h-[350px] w-full rounded-xl" />
+      </div>
+    ),
+  }
+);
+
+const PERIODS = [{ value: "7d", label: "7 days" }, { value: "30d", label: "30 days" }, { value: "90d", label: "90 days" }, { value: "1y", label: "1 year" }];
+const METRIC_ICONS = { revenue: CircleDollarSign, orders: ShoppingBag, users: Users, products: Package };
+const MONEY = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+
+function statusTone(status: string) {
+  if (["delivered", "paid"].includes(status)) return "is-success";
+  if (["cancelled", "refunded", "returned"].includes(status)) return "is-danger";
+  if (["pending", "processing"].includes(status)) return "is-warning";
+  return "is-neutral";
+}
 
 export function DashboardOverview() {
-  const [period, setPeriod] = useState("30d");
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const [overview, sales, users, orders, products, inventory] =
-          await Promise.all([
-            apiClient.getDashboardOverview(period),
-            apiClient.getSalesAnalytics(period),
-            apiClient.getUserAnalytics(period),
-            apiClient.getOrderAnalytics(period),
-            apiClient.getProductStats(),
-            apiClient.getInventoryAnalytics(),
-          ]);
-
-        setData({
-          metrics: [
-            {
-              label: "Total Revenue",
-              value: `$${sales.totalRevenue.toLocaleString()}`,
-              change: `${sales.growth}%`,
-              positive: sales.growth >= 0,
-              icon: "revenue",
-            },
-            {
-              label: "Total Orders",
-              value: orders.totalOrders.toLocaleString(),
-              change: `${orders.growth}%`,
-              positive: orders.growth >= 0,
-              icon: "orders",
-            },
-            {
-              label: "Active Users",
-              value: users.activeUsers.toLocaleString(),
-              change: `${users.growth}%`,
-              positive: users.growth >= 0,
-              icon: "users",
-            },
-            {
-              label: "Active Products",
-              value: products.activeProducts.toLocaleString(),
-              change: `${products.growth}%`,
-              positive: products.growth >= 0,
-              icon: "products",
-            },
-          ],
-          revenueData: sales.revenueData,
-          ordersData: orders.ordersData,
-          productStats: [
-            {
-              label: "Total Products",
-              value: products.totalProducts.toString(),
-              subtext: "Active",
-            },
-            {
-              label: "Low Stock",
-              value: products.lowStock.toString(),
-              subtext: "Alert",
-              color: "warning",
-            },
-            {
-              label: "Out of Stock",
-              value: products.outOfStock.toString(),
-              subtext: "Critical",
-              color: "danger",
-            },
-          ],
-          userStats: [
-            { label: "Total Users", value: users.totalUsers.toLocaleString() },
-            {
-              label: "Active Users",
-              value: users.activeUsers.toLocaleString(),
-            },
-            { label: "New Users", value: users.newUsers.toLocaleString() },
-          ],
-          recentOrders: orders.recentOrders,
-          alerts: [
-            {
-              type: "warning",
-              message: `${products.lowStock} products low on stock`,
-            },
-            {
-              type: "danger",
-              message: `${products.outOfStock} products out of stock`,
-            },
-            { type: "info", message: `${users.newUsers} new users this month` },
-          ],
-        });
-      } catch (err) {
-        console.error("Failed to fetch dashboard data:", err);
-        setError("Failed to load dashboard data");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [period]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500"></div>
-      </div>
-    );
-  }
-
-  if (error || !data) {
-    return (
-      <div className="flex items-center justify-center h-96 text-red-400">
-        {error || "No data available"}
-      </div>
-    );
-  }
+  const [period, setPeriod] = useState<string>("30d");
+  const { data, isPending, isError, error, refetch, isFetching } = useDashboardOverview(period);
 
   return (
-    <div className="space-y-6">
-      {/* Period Filter */}
-      <div className="flex gap-2">
-        {["7d", "30d", "90d", "1y"].map((p) => (
-          <Button
-            key={p}
-            variant={period === p ? "default" : "outline"}
-            onClick={() => setPeriod(p)}
-            className={
-              period === p ? "bg-linear-to-r from-[#7C3AED] to-[#3B82F6]" : ""
-            }
-          >
-            {p}
-          </Button>
-        ))}
-      </div>
-
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {data.metrics.map((metric: any, idx: number) => (
-          <Card
-            key={idx}
-            className="glass-dark p-6 border-[#2A2A35] hover:border-[#7C3AED]/50 transition-all duration-300"
-          >
-            <p className="text-[#A0A0A8] text-sm font-medium">{metric.label}</p>
-            <p className="text-2xl font-bold text-white mt-2">{metric.value}</p>
-            <div className="flex items-center gap-1 mt-3">
-              {metric.positive ? (
-                <TrendingUp className="w-4 h-4 text-green-500" />
-              ) : (
-                <TrendingDown className="w-4 h-4 text-red-500" />
-              )}
-              <span
-                className={metric.positive ? "text-green-500" : "text-red-500"}
-              >
-                {metric.change}
-              </span>
-            </div>
-          </Card>
-        ))}
-      </div>
-
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Revenue Chart */}
-        <Card className="glass-dark p-6 border-[#2A2A35]">
-          <h3 className="text-white font-semibold mb-4">Revenue Trend</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={data.revenueData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2A2A35" />
-              <XAxis dataKey="date" stroke="#A0A0A8" />
-              <YAxis stroke="#A0A0A8" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#1F1F28",
-                  border: "1px solid #2A2A35",
-                  borderRadius: "8px",
-                }}
-                labelStyle={{ color: "#F5F5F7" }}
-              />
-              <Legend />
-              <Line
-                type="monotone"
-                dataKey="revenue"
-                stroke="#7C3AED"
-                strokeWidth={2}
-                dot={{ fill: "#7C3AED" }}
-              />
-              <Line
-                type="monotone"
-                dataKey="avgOrderValue"
-                stroke="#3B82F6"
-                strokeWidth={2}
-                dot={{ fill: "#3B82F6" }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </Card>
-
-        {/* Orders Chart */}
-        <Card className="glass-dark p-6 border-[#2A2A35]">
-          <h3 className="text-white font-semibold mb-4">Orders per Day</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data.ordersData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2A2A35" />
-              <XAxis dataKey="date" stroke="#A0A0A8" />
-              <YAxis stroke="#A0A0A8" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#1F1F28",
-                  border: "1px solid #2A2A35",
-                  borderRadius: "8px",
-                }}
-                labelStyle={{ color: "#F5F5F7" }}
-              />
-              <Legend />
-              <Bar dataKey="orders" fill="#7C3AED" radius={[8, 8, 0, 0]} />
-              <Bar dataKey="delivered" fill="#3B82F6" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-      </div>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Product Stats */}
-        <Card className="glass-dark p-6 border-[#2A2A35]">
-          <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-            <Package className="w-5 h-5 text-[#7C3AED]" />
-            Product Status
-          </h3>
-          <div className="space-y-3">
-            {data.productStats.map((stat: any, idx: number) => (
-              <div key={idx} className="flex justify-between items-center">
-                <span className="text-[#A0A0A8] text-sm">{stat.label}</span>
-                <div className="flex flex-col items-end">
-                  <span className="text-white font-semibold">{stat.value}</span>
-                  <span
-                    className={`text-xs ${
-                      stat.color === "warning"
-                        ? "text-yellow-500"
-                        : stat.color === "danger"
-                        ? "text-red-500"
-                        : "text-green-500"
-                    }`}
-                  >
-                    {stat.subtext}
-                  </span>
-                </div>
-              </div>
-            ))}
+    <div className="fi-overview">
+      <ActionBar layout="split">
+        <div><p className="fa-kicker">Performance overview</p><p className="fi-toolbar-copy">A clear view of your store&apos;s activity.</p></div>
+        <div className="fi-toolbar-actions">
+          <div className="fa-segmented" role="group" aria-label="Reporting period">
+            {PERIODS.map((p) => <Button key={p.value} type="button" variant="ghost" size="sm" aria-pressed={period === p.value} onClick={() => setPeriod(p.value)} className={period === p.value ? "is-active" : ""}>{p.label}</Button>)}
           </div>
-        </Card>
-
-        {/* User Stats */}
-        <Card className="glass-dark p-6 border-[#2A2A35]">
-          <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-            <Users className="w-5 h-5 text-[#3B82F6]" />
-            User Statistics
-          </h3>
-          <div className="space-y-3">
-            {data.userStats.map((stat: any, idx: number) => (
-              <div key={idx} className="flex justify-between items-center">
-                <span className="text-[#A0A0A8] text-sm">{stat.label}</span>
-                <span className="text-white font-semibold">{stat.value}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        {/* Quick Actions */}
-        <Card className="glass-dark p-6 border-[#2A2A35]">
-          <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-yellow-500" />
-            Quick Alerts
-          </h3>
-          <div className="space-y-2 text-sm">
-            {data.alerts.map((alert: any, idx: number) => (
-              <div
-                key={idx}
-                className={`p-2 rounded border ${
-                  alert.type === "warning"
-                    ? "bg-yellow-500/10 border-yellow-500/20"
-                    : alert.type === "danger"
-                    ? "bg-red-500/10 border-red-500/20"
-                    : "bg-blue-500/10 border-blue-500/20"
-                }`}
-              >
-                <p
-                  className={
-                    alert.type === "warning"
-                      ? "text-yellow-400"
-                      : alert.type === "danger"
-                      ? "text-red-400"
-                      : "text-blue-400"
-                  }
-                >
-                  {alert.message}
-                </p>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      {/* Recent Orders */}
-      <Card className="glass-dark p-6 border-[#2A2A35]">
-        <h3 className="text-white font-semibold mb-4">Recent Orders</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[#2A2A35]">
-                <th className="text-left py-3 px-4 text-[#A0A0A8] font-medium">
-                  Order ID
-                </th>
-                <th className="text-left py-3 px-4 text-[#A0A0A8] font-medium">
-                  Customer
-                </th>
-                <th className="text-left py-3 px-4 text-[#A0A0A8] font-medium">
-                  Amount
-                </th>
-                <th className="text-left py-3 px-4 text-[#A0A0A8] font-medium">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.recentOrders.map((order: any, i: number) => (
-                <tr
-                  key={i}
-                  className="border-b border-[#2A2A35] hover:bg-[#1F1F28] transition-colors"
-                >
-                  <td className="py-3 px-4 text-white font-medium">
-                    {order.id}
-                  </td>
-                  <td className="py-3 px-4 text-white">{order.customer}</td>
-                  <td className="py-3 px-4 text-white">{order.amount}</td>
-                  <td className="py-3 px-4">
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        order.status === "Delivered"
-                          ? "bg-green-500/20 text-green-400"
-                          : order.status === "Shipped"
-                          ? "bg-blue-500/20 text-blue-400"
-                          : order.status === "Processing"
-                          ? "bg-yellow-500/20 text-yellow-400"
-                          : "bg-gray-500/20 text-gray-400"
-                      }`}
-                    >
-                      {order.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <Button type="button" variant="outline" size="icon" aria-label="Refresh dashboard" disabled={isFetching} onClick={() => refetch()}><RefreshCw aria-hidden className={isFetching ? "fi-refreshing" : ""} /></Button>
         </div>
-      </Card>
+      </ActionBar>
+
+      {isPending ? <LoadingSkeleton variant="dashboard" /> : null}
+      {isError ? <ErrorState message={error instanceof Error ? error.message : "Failed to load dashboard data"} onRetry={() => refetch()} /> : null}
+
+      {!isPending && !isError && data ? <>
+        <div className="fa-stat-grid">
+          {data.metrics.map((metric) => {
+            const Icon = METRIC_ICONS[metric.icon as keyof typeof METRIC_ICONS] || Package;
+            return <Card key={metric.label} className="fa-stat fi-metric">
+              <div className="fi-metric-top"><span>{metric.label}</span><span className="fi-metric-icon"><Icon aria-hidden /></span></div>
+              <strong className="fi-metric-value">{metric.value}</strong>
+              <div className="fi-metric-bottom">
+                <span>{metric.icon === "revenue" || metric.icon === "orders" ? `Last ${period === "1y" ? "365" : parseInt(period, 10)} days` : "Current total"}</span>
+                {metric.change !== null ? <span className={`fi-change ${metric.positive ? "is-positive" : "is-negative"}`}>{metric.positive ? <TrendingUp aria-hidden /> : <TrendingDown aria-hidden />}{metric.change}</span> : null}
+              </div>
+            </Card>;
+          })}
+        </div>
+        <p className="fi-scope-note"><Info aria-hidden /> Revenue counts paid orders excluding cancellations and refunds. Active users and products show current totals.</p>
+        <DashboardCharts revenueData={data.revenueData} ordersData={data.ordersData} />
+
+        <div className="fi-operations-grid">
+          <Card className="fa-panel fi-panel">
+            <div className="fa-panel-heading fi-panel-heading"><div><p className="fa-kicker">Catalog pulse</p><h2><Package aria-hidden /> Product status</h2></div><Button asChild variant="outline" size="icon"><Link href="/admin/analytics/inventory" aria-label="View inventory analytics"><ArrowUpRight aria-hidden /></Link></Button></div>
+            <dl className="fi-stat-list">
+              {data.productStats.map((stat) => <div key={stat.label}><dt>{stat.label}</dt><dd><strong>{stat.value}</strong>{stat.color ? <span className={`fa-status ${stat.color === "warning" ? "is-warning" : "is-danger"}`}>{stat.subtext}</span> : <span className="fi-subtext">Catalog total</span>}</dd></div>)}
+            </dl>
+          </Card>
+          <Card className="fa-panel fi-panel">
+            <div className="fa-panel-heading fi-panel-heading"><div><p className="fa-kicker">Community pulse</p><h2><Users aria-hidden /> User statistics</h2></div><Button asChild variant="outline" size="icon"><Link href="/admin/users" aria-label="Manage users"><ArrowUpRight aria-hidden /></Link></Button></div>
+            <dl className="fi-stat-list">{data.userStats.map((stat) => <div key={stat.label}><dt>{stat.label}<span className="fi-subtext">{stat.label === "New Users" ? "Selected period" : "Current total"}</span></dt><dd><strong>{stat.value}</strong></dd></div>)}</dl>
+          </Card>
+          <Card className="fa-panel fi-panel">
+            <div className="fa-panel-heading fi-panel-heading"><div><p className="fa-kicker">Attention queue</p><h2><AlertTriangle aria-hidden /> Store signals</h2></div></div>
+            <div className="fi-alert-list">{data.alerts.map((alert) => <div key={alert.message} className={`fi-alert is-${alert.type}`}>{alert.type === "info" ? <Info aria-hidden /> : <AlertTriangle aria-hidden />}<p>{alert.message}</p></div>)}</div>
+          </Card>
+        </div>
+
+        <Card className="fa-panel fi-panel fi-orders-panel">
+          <div className="fa-panel-heading fi-panel-heading"><div><p className="fa-kicker">Order activity</p><h2>Recent orders</h2><p>Up to 10 latest orders in the selected period.</p></div><Button asChild variant="outline"><Link href="/admin/orders">All orders <ArrowUpRight aria-hidden /></Link></Button></div>
+          {data.recentOrders.length ? <div className="fa-table-scroll fi-table-scroll" tabIndex={0} role="region" aria-label="Recent orders, scroll horizontally to view all columns"><table className="fa-data-table fi-table"><thead><tr><th scope="col">Order</th><th scope="col">Customer</th><th scope="col" className="fi-numeric">Amount</th><th scope="col">Status</th></tr></thead><tbody>
+            {data.recentOrders.map((order) => <tr key={order.id}><td><span className="fi-order-id" title={order.id}>{order.id}</span></td><td>{order.customer}</td><td className="fi-numeric fi-cell-strong">{MONEY.format(order.amount)}</td><td><span className={`fa-status ${statusTone(order.status)}`}>{order.status}</span></td></tr>)}
+          </tbody></table></div> : <div className="fi-empty"><CircleCheck aria-hidden /><h3>No orders in this period</h3><p>Choose a wider reporting period to explore earlier activity.</p></div>}
+        </Card>
+      </> : null}
     </div>
   );
 }

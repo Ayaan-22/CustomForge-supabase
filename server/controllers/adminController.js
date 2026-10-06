@@ -1,8 +1,10 @@
+import { publicUser } from "../utils/publicUser.js";
 // server/controllers/adminController.js
 
 import asyncHandler from "express-async-handler";
-import { supabase } from "../config/db.js";
+import { getServiceClient } from "../config/db.js";
 import AppError from "../utils/appError.js";
+import { quotePostgrestFilterValue } from "../utils/postgrestFilters.js";
 import { logger } from "../middleware/logger.js";
 import cloudinary from "../utils/cloudinary.js";
 import streamifier from "streamifier";
@@ -33,6 +35,8 @@ import {
   updateReview,
   softDeleteReview,
 } from "../models/Review.js";
+
+const supabase = getServiceClient();
 
 /* ============================================================================
    UTILITY HELPERS
@@ -102,545 +106,29 @@ const validateDateRange = (startDate, endDate, maxDays = 365) => {
   return { start, end };
 };
 
-/**
- * Group date into key for daily/weekly/monthly analytics
- */
-const getPeriodKey = (date, period = "daily") => {
-  const d = new Date(date);
-  if (period === "weekly") {
-    const firstJan = new Date(d.getFullYear(), 0, 1);
-    const dayOfYear = (d - firstJan) / (1000 * 60 * 60 * 24) + 1;
-    const week = Math.ceil(dayOfYear / 7);
-    return `${d.getFullYear()}-W${week}`;
-  }
-  if (period === "monthly") {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  }
-  return d.toISOString().slice(0, 10); // YYYY-MM-DD
-};
-
 /* ============================================================================
    ANALYTICS
 ============================================================================ */
 
-/**
- * @desc    Get comprehensive sales analytics
- * @route   GET /api/admin/analytics/sales
- * @access  Private/Admin
- */
-export const getSalesAnalytics = asyncHandler(async (req, res, next) => {
-  ensureAdmin(req, next);
-
-  const validPeriods = ["daily", "weekly", "monthly"];
-  const requestedPeriod = req.query.period;
-  const period = validPeriods.includes(requestedPeriod)
-    ? requestedPeriod
-    : "daily";
-
-  const days = Math.max(1, parseInt(req.query.days, 10) || 30);
-  const startDate = new Date(
-    Date.now() - days * 24 * 60 * 60 * 1000
-  ).toISOString();
-  const endDate = new Date().toISOString();
-
-  logger.info("Admin fetch sales analytics", {
-    adminId: req.user?.id,
-    period,
-    days,
-  });
-
-  // 1. Fetch paid/non-cancelled orders in the range
-  const { data: orders, error: ordersError } = await supabase
-    .from("orders")
-    .select("id, user_id, total_price, created_at, status, is_paid")
-    .gte("created_at", startDate)
-    .lte("created_at", endDate);
-
-  if (ordersError) {
-    logger.error("Sales analytics orders query failed", {
-      error: ordersError.message,
-    });
-    throw new AppError("Failed to load sales data", 500);
+// Aggregate in PostgreSQL: PostgREST row caps must never truncate totals.
+const analytics = kind => asyncHandler(async (req,res) => {
+  ensureAdmin(req);
+  const days = req.query.days === undefined ? 30 : Number(req.query.days);
+  const period = kind === 'sales' ? (req.query.period || 'daily') : 'daily';
+  if (!Number.isInteger(days) || days < 1 || days > 365 || !['daily','weekly','monthly'].includes(period)) throw new AppError('Invalid analytics range',400);
+  const {data,error} = await supabase.rpc('admin_analytics',{p_kind:kind,p_days:days,p_period:period});
+  if (error || !data) {
+    logger.error('Database analytics unavailable',{kind,code:error?.code});
+    throw new AppError('Analytics are unavailable. Verify the analytics migration is deployed.',503);
   }
-
-  const validOrders = (orders || []).filter(
-    (o) =>
-      o.is_paid === true && o.status !== "cancelled" && o.status !== "refunded"
-  );
-
-  // Overall summary
-  const totalOrders = validOrders.length;
-  const totalSales = validOrders.reduce(
-    (sum, o) => sum + Number(o.total_price || 0),
-    0
-  );
-  const avgOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
-
-  // Group by period
-  const salesByPeriodMap = new Map();
-  for (const order of validOrders) {
-    const key = getPeriodKey(order.created_at, period);
-    if (!salesByPeriodMap.has(key)) {
-      salesByPeriodMap.set(key, { period: key, orders: 0, sales: 0 });
-    }
-    const bucket = salesByPeriodMap.get(key);
-    bucket.orders += 1;
-    bucket.sales += Number(order.total_price || 0);
-  }
-
-  const salesByPeriod = Array.from(salesByPeriodMap.values()).sort((a, b) =>
-    a.period > b.period ? 1 : -1
-  );
-
-  // 2. Top products (by quantity & revenue)
-  const orderIds = validOrders.map((o) => o.id);
-  let topProducts = [];
-
-  if (orderIds.length > 0) {
-    const { data: orderItems, error: itemsError } = await supabase
-      .from("order_items")
-      .select("order_id, product_id, name, price, quantity")
-      .in("order_id", orderIds);
-
-    if (itemsError) {
-      logger.error("Sales analytics order_items query failed", {
-        error: itemsError.message,
-      });
-      throw new AppError("Failed to load product analytics", 500);
-    }
-
-    const productAgg = new Map();
-    for (const item of orderItems || []) {
-      const pid = item.product_id;
-      if (!pid) continue;
-      if (!productAgg.has(pid)) {
-        productAgg.set(pid, {
-          productId: pid,
-          name: item.name,
-          totalQuantity: 0,
-          totalRevenue: 0,
-        });
-      }
-      const p = productAgg.get(pid);
-      p.totalQuantity += item.quantity || 0;
-      p.totalRevenue += (item.quantity || 0) * Number(item.price || 0);
-    }
-
-    topProducts = Array.from(productAgg.values()).sort(
-      (a, b) => b.totalRevenue - a.totalRevenue
-    );
-  }
-
-  // 3. Customer stats
-  const userOrderMap = new Map();
-  for (const order of validOrders) {
-    if (!order.user_id) continue;
-    if (!userOrderMap.has(order.user_id)) {
-      userOrderMap.set(order.user_id, []);
-    }
-    userOrderMap.get(order.user_id).push(order);
-  }
-
-  let newCustomers = 0;
-  let returningCustomers = 0;
-
-  for (const [, userOrders] of userOrderMap.entries()) {
-    userOrders.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-    const firstOrder = userOrders[0];
-    if (new Date(firstOrder.created_at) >= new Date(startDate)) {
-      newCustomers += 1;
-    } else {
-      returningCustomers += 1;
-    }
-  }
-
-  const customerStats = {
-    totalCustomers: userOrderMap.size,
-    newCustomers,
-    returningCustomers,
-  };
-
-  // Calculate growth (mock calculation - compare to previous period)
-  const growth = totalOrders > 0 ? 15.5 : 0; // TODO: Calculate actual growth
-
-  // Format revenue data for charts
-  const revenueData = salesByPeriod.map((item) => ({
-    date: item.period,
-    revenue: item.sales,
-    avgOrderValue: item.orders > 0 ? item.sales / item.orders : 0,
-  }));
-
-  res.json({
-    success: true,
-    data: {
-      totalRevenue: Number(totalSales.toFixed(2)),
-      totalOrders,
-      avgOrderValue: Number(avgOrderValue.toFixed(2)),
-      growth,
-      revenueData,
-      topProducts,
-      customerStats,
-      period,
-      range: { startDate, endDate },
-    },
-  });
-
-  logger.info("Admin fetched sales analytics", {
-    totalOrders,
-    totalSales,
-    period,
-  });
+  res.json({success:true,data});
 });
-
-/**
- * @desc    Product stats grouped by category
- * @route   GET /api/admin/analytics/product-stats
- * @access  Private/Admin
- */
-export const getProductStats = asyncHandler(async (req, res, next) => {
-  ensureAdmin(req, next);
-
-  logger.info("Admin fetch product stats", {
-    adminId: req.user?.id,
-  });
-
-  const { data: products, error } = await supabase
-    .from("products")
-    .select("id, category, final_price, stock, is_active, is_featured");
-
-  if (error) {
-    logger.error("Product stats query failed", {
-      error: error.message,
-    });
-    throw new AppError("Failed to load product stats", 500);
-  }
-
-  const totalProducts = products?.length ?? 0;
-  const activeProducts = (products || []).filter((p) => p.is_active).length;
-  const lowStock = (products || []).filter(
-    (p) => p.stock > 0 && p.stock <= 5
-  ).length;
-  const outOfStock = (products || []).filter((p) => p.stock === 0).length;
-  const growth = totalProducts > 0 ? 8.5 : 0; // TODO: Calculate actual growth
-
-  res.json({
-    success: true,
-    data: {
-      totalProducts,
-      activeProducts,
-      lowStock,
-      outOfStock,
-      growth,
-    },
-  });
-
-  logger.info("Admin fetched product stats", {
-    totalProducts,
-    activeProducts,
-  });
-});
-
-/**
- * @desc    Get user analytics
- * @route   GET /api/admin/analytics/users
- * @access  Private/Admin
- */
-export const getUserAnalytics = asyncHandler(async (req, res, next) => {
-  ensureAdmin(req, next);
-
-  const days = Math.max(1, parseInt(req.query.days, 10) || 30);
-  const startDate = new Date(
-    Date.now() - days * 24 * 60 * 60 * 1000
-  ).toISOString();
-
-  const { data: users, error } = await supabase
-    .from("users")
-    .select("id, created_at, active, role, is_email_verified");
-
-  if (error) {
-    throw new AppError("Failed to load user analytics", 500);
-  }
-
-  const totalUsers = users?.length ?? 0;
-  const activeUsers = (users || []).filter((u) => u.active).length;
-  const verifiedUsers = (users || []).filter((u) => u.is_email_verified).length;
-  const newUsers = (users || []).filter(
-    (u) => new Date(u.created_at) >= new Date(startDate)
-  ).length;
-  const adminUsers = (users || []).filter((u) => u.role === "admin").length;
-  const growth = totalUsers > 0 ? 12.5 : 0; // TODO: Calculate actual growth
-
-  res.json({
-    success: true,
-    data: {
-      totalUsers,
-      activeUsers,
-      verifiedUsers,
-      newUsers,
-      adminUsers,
-      growth,
-      period: { days, startDate },
-    },
-  });
-});
-
-/**
- * @desc    Get order analytics
- * @route   GET /api/admin/analytics/orders
- * @access  Private/Admin
- */
-export const getOrderAnalytics = asyncHandler(async (req, res, next) => {
-  ensureAdmin(req, next);
-
-  const days = Math.max(1, parseInt(req.query.days, 10) || 30);
-  const startDate = new Date(
-    Date.now() - days * 24 * 60 * 60 * 1000
-  ).toISOString();
-
-  const { data: orders, error } = await supabase
-    .from("orders")
-    .select(
-      "id, status, is_paid, total_price, created_at, user_id, items:order_items(*)"
-    )
-    .gte("created_at", startDate)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    throw new AppError("Failed to load order analytics", 500);
-  }
-
-  const totalOrders = orders?.length ?? 0;
-  const paidOrders = (orders || []).filter((o) => o.is_paid).length;
-  const statusCounts = {};
-  (orders || []).forEach((o) => {
-    statusCounts[o.status] = (statusCounts[o.status] || 0) + 1;
-  });
-
-  const totalRevenue = (orders || [])
-    .filter(
-      (o) => o.is_paid && o.status !== "cancelled" && o.status !== "refunded"
-    )
-    .reduce((sum, o) => sum + Number(o.total_price || 0), 0);
-
-  const growth = totalOrders > 0 ? 18.2 : 0; // TODO: Calculate actual growth
-
-  // Group orders by date for chart
-  const ordersByDate = new Map();
-  (orders || []).forEach((order) => {
-    const date = new Date(order.created_at).toISOString().slice(0, 10);
-    if (!ordersByDate.has(date)) {
-      ordersByDate.set(date, { date, orders: 0, delivered: 0 });
-    }
-    const bucket = ordersByDate.get(date);
-    bucket.orders += 1;
-    if (order.status === "delivered") bucket.delivered += 1;
-  });
-
-  const ordersData = Array.from(ordersByDate.values()).sort((a, b) =>
-    a.date > b.date ? 1 : -1
-  );
-
-  // Get recent orders for dashboard
-  const recentOrders = (orders || []).slice(0, 10).map((order) => ({
-    id: order.id.slice(0, 8),
-    customer: "User " + (order.user_id ? order.user_id.slice(0, 8) : "Guest"),
-    amount: `$${Number(order.total_price || 0).toFixed(2)}`,
-    status: order.status.charAt(0).toUpperCase() + order.status.slice(1),
-  }));
-
-  res.json({
-    success: true,
-    data: {
-      totalOrders,
-      paidOrders,
-      totalRevenue: Number(totalRevenue.toFixed(2)),
-      statusCounts,
-      growth,
-      ordersData,
-      recentOrders,
-      period: { days, startDate },
-    },
-  });
-});
-
-/**
- * @desc    Dashboard overview metrics
- * @route   GET /api/admin/analytics/overview
- * @access  Private/Admin
- */
-export const getDashboardOverview = asyncHandler(async (req, res, next) => {
-  ensureAdmin(req, next);
-
-  logger.info("Admin fetch dashboard overview", {
-    adminId: req.user?.id,
-  });
-
-  // Users
-  const { count: totalUsers, error: userError } = await supabase
-    .from("users")
-    .select("id", { count: "exact", head: true });
-
-  if (userError) {
-    logger.error("Dashboard user count failed", {
-      error: userError.message,
-    });
-    throw new AppError("Failed to load dashboard metrics", 500);
-  }
-
-  // Orders + total revenue
-  const { data: orders, error: ordersError } = await supabase
-    .from("orders")
-    .select("id, total_price, is_paid, status, created_at");
-
-  if (ordersError) {
-    logger.error("Dashboard orders query failed", {
-      error: ordersError.message,
-    });
-    throw new AppError("Failed to load dashboard metrics", 500);
-  }
-
-  const totalOrders = (orders || []).length;
-  const paidOrders = (orders || []).filter(
-    (o) =>
-      o.is_paid === true && o.status !== "cancelled" && o.status !== "refunded"
-  );
-  const totalRevenue = paidOrders.reduce(
-    (sum, o) => sum + Number(o.total_price || 0),
-    0
-  );
-
-  // Products
-  const { count: totalProducts, error: productError } = await supabase
-    .from("products")
-    .select("id", { count: "exact", head: true });
-
-  if (productError) {
-    logger.error("Dashboard product count failed", {
-      error: productError.message,
-    });
-    throw new AppError("Failed to load dashboard metrics", 500);
-  }
-
-  // Low stock products
-  const { data: lowStockProducts, error: lowStockError } = await supabase
-    .from("products")
-    .select("id")
-    .lte("stock", 5)
-    .eq("is_active", true);
-
-  if (lowStockError) {
-    logger.error("Dashboard low stock query failed", {
-      error: lowStockError.message,
-    });
-    throw new AppError("Failed to load dashboard metrics", 500);
-  }
-
-  res.json({
-    success: true,
-    data: {
-      users: {
-        total: totalUsers ?? 0,
-      },
-      orders: {
-        total: totalOrders,
-        paid: paidOrders.length,
-        revenue: Number(totalRevenue.toFixed(2)),
-      },
-      products: {
-        total: totalProducts ?? 0,
-        lowStock: lowStockProducts?.length ?? 0,
-      },
-    },
-  });
-});
-
-/**
- * @desc    Inventory analytics (stock levels etc.)
- * @route   GET /api/admin/analytics/inventory
- * @access  Private/Admin
- */
-export const getInventoryAnalytics = asyncHandler(async (req, res, next) => {
-  ensureAdmin(req, next);
-
-  logger.info("Admin fetch inventory analytics", {
-    adminId: req.user?.id,
-  });
-
-  const { data: products, error } = await supabase
-    .from("products")
-    .select("id, name, stock, is_active, sales_count, category, sku");
-
-  if (error) {
-    logger.error("Inventory analytics query failed", {
-      error: error.message,
-    });
-    throw new AppError("Failed to load inventory analytics", 500);
-  }
-
-  const lowStockThreshold = 5;
-
-  const totalProducts = products?.length ?? 0;
-  const totalStock = (products || []).reduce(
-    (sum, p) => sum + (p.stock || 0),
-    0
-  );
-  const avgStock =
-    totalProducts > 0 ? Math.round(totalStock / totalProducts) : 0;
-
-  const lowStock = (products || []).filter(
-    (p) => p.stock <= lowStockThreshold && p.stock > 0
-  );
-  const outOfStock = (products || []).filter((p) => p.stock <= 0);
-  const inStock = (products || []).filter((p) => p.stock > lowStockThreshold);
-
-  const topSelling = [...(products || [])]
-    .filter((p) => p.sales_count > 0)
-    .sort((a, b) => b.sales_count - a.sales_count)
-    .slice(0, 10);
-
-  // Group by category
-  const categoryMap = new Map();
-  (products || []).forEach((p) => {
-    const cat = p.category || "Uncategorized";
-    if (!categoryMap.has(cat)) {
-      categoryMap.set(cat, {
-        category: cat,
-        totalStock: 0,
-        productCount: 0,
-        lowStockCount: 0,
-      });
-    }
-    const entry = categoryMap.get(cat);
-    entry.totalStock += p.stock || 0;
-    entry.productCount += 1;
-    if (p.stock <= lowStockThreshold) {
-      entry.lowStockCount += 1;
-    }
-  });
-
-  const categoryStock = Array.from(categoryMap.values()).map((c) => ({
-    ...c,
-    avgStock:
-      c.productCount > 0 ? Math.round(c.totalStock / c.productCount) : 0,
-  }));
-
-  res.json({
-    success: true,
-    data: {
-      stockLevels: {
-        totalStock,
-        avgStock,
-        inStock: inStock.length,
-        lowStock: lowStock.length,
-        outOfStock: outOfStock.length,
-      },
-      categoryStock,
-      lowStockProducts: lowStock.slice(0, 10), // Limit to 10 for display
-      outOfStockProducts: outOfStock.slice(0, 10),
-      topSellingProducts: topSelling,
-    },
-  });
-});
+export const getSalesAnalytics = analytics('sales');
+export const getProductStats = analytics('products');
+export const getUserAnalytics = analytics('users');
+export const getOrderAnalytics = analytics('orders');
+export const getDashboardOverview = analytics('overview');
+export const getInventoryAnalytics = analytics('inventory');
 
 /* ============================================================================
    USER MANAGEMENT
@@ -660,7 +148,7 @@ export const createUser = asyncHandler(async (req, res, next) => {
     throw new AppError("Name, email and password are required", 400);
   }
 
-  const existing = await findUserByEmail(email);
+  const existing = await findUserByEmail(email, {}, supabase);
   if (existing) {
     throw new AppError("User with this email already exists", 400);
   }
@@ -672,7 +160,7 @@ export const createUser = asyncHandler(async (req, res, next) => {
     email,
     password,
     role: role && ["user", "admin"].includes(role) ? role : "user",
-  });
+  }, supabase);
 
   logger.info("Admin created user", {
     adminId: req.user?.id,
@@ -681,7 +169,7 @@ export const createUser = asyncHandler(async (req, res, next) => {
 
   res.status(201).json({
     success: true,
-    data: user,
+    data: publicUser(user),
   });
 });
 
@@ -716,7 +204,8 @@ export const getAllUsers = asyncHandler(async (req, res, next) => {
 
   if (search) {
     const pattern = buildIlikePattern(search);
-    query = query.or(`name.ilike.${pattern},email.ilike.${pattern}`);
+    const quotedPattern = quotePostgrestFilterValue(pattern);
+    query = query.or(`name.ilike.${quotedPattern},email.ilike.${quotedPattern}`);
   }
 
   if (role && ["user", "admin"].includes(role)) {
@@ -751,7 +240,7 @@ export const getAllUsers = asyncHandler(async (req, res, next) => {
     count: count ?? users.length,
     page,
     pages: Math.ceil((count ?? users.length) / limit),
-    data: users,
+    data: users.map(publicUser),
     filters: { search, role, isActive, sortBy, sortOrder },
   });
 
@@ -776,13 +265,70 @@ export const getUserById = asyncHandler(async (req, res, next) => {
     throw new AppError("Invalid user ID", 400);
   }
 
-  const user = await findUserById(userId);
+  const user = await findUserById(userId, {}, supabase);
 
   if (!user) {
     throw new AppError("User not found", 404);
   }
 
-  res.json({ success: true, data: user });
+  const [{ data: addressRows }, { data: paymentRows }] = await Promise.all([
+    supabase
+      .from("user_addresses")
+      .select("*")
+      .eq("user_id", userId)
+      .order("is_default", { ascending: false }),
+    supabase
+      .from("user_payment_methods")
+      .select("*")
+      .eq("user_id", userId)
+      .order("is_default", { ascending: false }),
+  ]);
+
+  const addresses = (addressRows || []).map((row) => {
+    const parts = row.address?.split(", ") || [row.address || ""];
+    return {
+      id: row.id,
+      userId: row.user_id,
+      label: row.label,
+      fullName: row.full_name,
+      line1: parts[0] || "",
+      line2: parts[1] || "",
+      address: row.address,
+      city: row.city,
+      state: row.state,
+      postalCode: row.postal_code,
+      country: row.country,
+      phoneNumber: row.phone_number,
+      isDefault: row.is_default,
+    };
+  });
+
+  const paymentMethods = (paymentRows || []).map((row) => ({
+    id: row.id,
+    userId: row.user_id,
+    type: row.type,
+    cardHolderName: row.card_holder_name,
+    cardNumber: String(row.card_number || "").replace(/\D/g, "").slice(-4),
+    expiryMonth: row.expiry_month,
+    expiryYear: row.expiry_year,
+    billingAddress: row.billing_address || {
+      address: "",
+      city: "",
+      state: "",
+      postalCode: "",
+      country: "",
+    },
+    isDefault: row.is_default,
+  }));
+
+  res.json({
+    success: true,
+    data: {
+      ...publicUser(user),
+      addresses,
+      paymentMethods,
+    },
+  });
 });
 
 /**
@@ -828,14 +374,14 @@ export const updateUser = asyncHandler(async (req, res, next) => {
     throw new AppError("No valid fields provided to update", 400);
   }
 
-  const updatedUser = await updateUserRepo(userId, updates);
+  const updatedUser = await updateUserRepo(userId, updates, supabase);
 
   logger.info("Admin updated user", {
     adminId: req.user?.id,
     userId,
   });
 
-  res.json({ success: true, data: updatedUser });
+  res.json({ success: true, data: publicUser(updatedUser) });
 });
 
 /**
@@ -912,7 +458,7 @@ export const getAllProducts = asyncHandler(async (req, res, next) => {
   if (search) {
     const pattern = buildIlikePattern(search);
     query = query.or(
-      `name.ilike.${pattern},brand.ilike.${pattern},category.ilike.${pattern},description.ilike.${pattern}`
+      `name.ilike.${quotePostgrestFilterValue(pattern)},brand.ilike.${quotePostgrestFilterValue(pattern)},category.ilike.${quotePostgrestFilterValue(pattern)},description.ilike.${quotePostgrestFilterValue(pattern)}`
     );
   }
 
@@ -1046,7 +592,14 @@ export const createProduct = asyncHandler(async (req, res, next) => {
     );
   }
 
-  const images = [];
+  let suppliedImages = req.body.images;
+  if (typeof suppliedImages === "string") {
+    try { suppliedImages = JSON.parse(suppliedImages); } catch { throw new AppError("Invalid image list", 400); }
+  }
+  if (suppliedImages !== undefined && !Array.isArray(suppliedImages)) throw new AppError("Invalid image list", 400);
+  const images = suppliedImages ?? [];
+  if (images.some(image => typeof image !== "string" || !/^https:\/\//i.test(image))) throw new AppError("Images must use HTTPS URLs", 400);
+  if (!Number.isInteger(Number(stock)) || Number(stock) < 0) throw new AppError("Stock must be a non-negative integer", 400);
 
   if (req.files && req.files.length > 0) {
     for (const file of req.files) {
@@ -1079,8 +632,7 @@ export const createProduct = asyncHandler(async (req, res, next) => {
     try {
       return JSON.parse(str);
     } catch (e) {
-      logger.warn(`Failed to parse JSON: ${str}`, { error: e.message });
-      return defaultValue;
+      throw new AppError("Invalid JSON in product details", 400);
     }
   };
 
@@ -1098,12 +650,12 @@ export const createProduct = asyncHandler(async (req, res, next) => {
     weight: weight ? Number(weight) : null,
     dimensions: safeJSONParse(dimensions, null),
     sku,
-    isActive: Boolean(isActive),
-    isFeatured: Boolean(isFeatured),
+    isActive: isActive === true || isActive === "true",
+    isFeatured: isFeatured === true || isFeatured === "true",
     images,
   };
 
-  const product = await createProductRepo(payload);
+  const product = await createProductRepo(payload, supabase);
 
   logger.info("Admin created product", {
     adminId: req.user?.id,
@@ -1136,7 +688,7 @@ export const updateProduct = asyncHandler(async (req, res, next) => {
     filesCount: (req.files && req.files.length) || 0,
   });
 
-  const existing = await getProductById(productId);
+  const existing = await getProductById(productId, supabase);
   if (!existing) {
     throw new AppError("Product not found", 404);
   }
@@ -1152,6 +704,7 @@ export const updateProduct = asyncHandler(async (req, res, next) => {
   }
   if ("stock" in updates) {
     updates.stock = Number(updates.stock);
+    if (!Number.isInteger(updates.stock) || updates.stock < 0) throw new AppError("Stock must be a non-negative integer", 400);
   }
   if ("isActive" in updates) {
     updates.isActive = updates.isActive === "true" || updates.isActive === true;
@@ -1185,6 +738,11 @@ export const updateProduct = asyncHandler(async (req, res, next) => {
     }
   }
 
+  if (typeof updates.images === "string") {
+    try { updates.images = JSON.parse(updates.images); } catch { throw new AppError("Invalid image list", 400); }
+  }
+  if (updates.images !== undefined && (!Array.isArray(updates.images) || updates.images.some(image => typeof image !== "string" || !/^https:\/\//i.test(image)))) throw new AppError("Images must use HTTPS URLs", 400);
+
   // Handle optional new images
   if (req.files && req.files.length > 0) {
     const newImages = [];
@@ -1207,10 +765,10 @@ export const updateProduct = asyncHandler(async (req, res, next) => {
       newImages.push(uploadResult.secure_url);
     }
 
-    updates.images = [...(existing.images || []), ...newImages];
+    updates.images = [...(updates.images ?? existing.images ?? []), ...newImages];
   }
 
-  const updatedProduct = await updateProductRepo(productId, updates);
+  const updatedProduct = await updateProductRepo(productId, updates, supabase);
 
   logger.info("Admin updated product", {
     adminId: req.user?.id,
@@ -1238,7 +796,7 @@ export const deleteProduct = asyncHandler(async (req, res, next) => {
     productId,
   });
 
-  await deleteProductRepo(productId);
+  await deleteProductRepo(productId, supabase);
 
   res.status(204).json({ success: true, data: null });
 });
@@ -1256,14 +814,14 @@ export const toggleProductActive = asyncHandler(async (req, res, next) => {
     throw new AppError("Invalid product ID", 400);
   }
 
-  const existing = await getProductById(productId);
+  const existing = await getProductById(productId, supabase);
   if (!existing) {
     throw new AppError("Product not found", 404);
   }
 
   const updated = await updateProductRepo(productId, {
     isActive: !existing.isActive,
-  });
+  }, supabase);
 
   res.json({ success: true, data: updated });
 });
@@ -1281,14 +839,14 @@ export const toggleProductFeature = asyncHandler(async (req, res, next) => {
     throw new AppError("Invalid product ID", 400);
   }
 
-  const existing = await getProductById(productId);
+  const existing = await getProductById(productId, supabase);
   if (!existing) {
     throw new AppError("Product not found", 404);
   }
 
   const updated = await updateProductRepo(productId, {
     isFeatured: !existing.isFeatured,
-  });
+  }, supabase);
 
   res.json({ success: true, data: updated });
 });
@@ -1313,7 +871,7 @@ export const updateProductStock = asyncHandler(async (req, res, next) => {
 
   const updated = await updateProductRepo(productId, {
     stock: Number(stock),
-  });
+  }, supabase);
 
   res.json({ success: true, data: updated });
 });
@@ -1380,7 +938,8 @@ export const getAllReviews = asyncHandler(async (req, res, next) => {
   // SEARCH in title/comment
   if (search) {
     const pattern = buildIlikePattern(search);
-    query = query.or(`title.ilike.${pattern},comment.ilike.${pattern}`);
+    const quotedPattern = quotePostgrestFilterValue(pattern);
+    query = query.or(`title.ilike.${quotedPattern},comment.ilike.${quotedPattern}`);
   }
 
   // PRODUCT
@@ -1394,6 +953,8 @@ export const getAllReviews = asyncHandler(async (req, res, next) => {
     if (!isValidUUID(userId)) throw new AppError("Invalid user ID", 400);
     query = query.eq("user_id", userId);
   }
+
+  if (typeof req.query.reported === 'string') query = query.eq('reported', req.query.reported === 'true');
 
   // EXACT RATING
   if (rating) query = query.eq("rating", Number(rating));
@@ -1503,7 +1064,7 @@ export const deleteProductReview = asyncHandler(async (req, res, next) => {
     throw new AppError("Invalid review ID", 400);
   }
 
-  const deleted = await softDeleteReview(reviewId);
+  const deleted = await softDeleteReview(reviewId, supabase);
 
   logger.info("Admin deleted review", {
     adminId: req.user?.id,
@@ -1549,6 +1110,12 @@ export const getOrders = asyncHandler(async (req, res, next) => {
     .select("*, items:order_items (*)", { count: "exact" });
 
   // STATUS
+  if (req.query.search) {
+    const search = String(req.query.search).trim();
+    if (!isValidUUID(search)) throw new AppError('Enter a complete order or user ID to search.', 400);
+    query = query.or(`id.eq.${search},user_id.eq.${search}`);
+  }
+
   if (status) query = query.eq("status", status);
 
   // PAYMENT STATUS
@@ -1610,13 +1177,13 @@ export const updateOrderToDelivered = asyncHandler(async (req, res, next) => {
     throw new AppError("Invalid order ID", 400);
   }
 
-  const order = await getOrderById(orderId);
+  const order = await getOrderById(orderId, supabase);
   if (!order) {
     throw new AppError("Order not found", 404);
   }
 
-  if (!order.is_paid) {
-    throw new AppError("Cannot deliver an unpaid order", 400);
+  if (!order.is_paid || order.status !== "shipped") {
+    throw new AppError("Only a shipped, paid order can be delivered", 400);
   }
 
   const nowIso = new Date().toISOString();
@@ -1629,7 +1196,7 @@ export const updateOrderToDelivered = asyncHandler(async (req, res, next) => {
       status: "delivered",
       updated_at: nowIso,
     })
-    .eq("id", orderId)
+    .eq("id", orderId).eq("status",order.status).eq("updated_at",order.updated_at)
     .select()
     .single();
 
@@ -1656,13 +1223,17 @@ export const markOrderAsPaid = asyncHandler(async (req, res, next) => {
     throw new AppError("Invalid order ID", 400);
   }
 
-  const order = await getOrderById(orderId);
+  const order = await getOrderById(orderId, supabase);
   if (!order) {
     throw new AppError("Order not found", 404);
   }
 
   if (order.is_paid) {
     throw new AppError("Order is already paid", 400);
+  }
+
+  if (order.payment_method !== "cod" || ["cancelled", "refunded", "returned"].includes(order.status)) {
+    throw new AppError("Only an eligible cash-on-delivery order can be manually marked paid", 409);
   }
 
   const paymentResult = {
@@ -1673,7 +1244,7 @@ export const markOrderAsPaid = asyncHandler(async (req, res, next) => {
     payment_method: "admin_manual",
   };
 
-  const updated = await markOrderPaidRepo(orderId, paymentResult);
+  const updated = await markOrderPaidRepo(orderId, paymentResult, supabase, order);
 
   logger.info("Admin marked order as paid", {
     adminId: req.user?.id,
@@ -1694,6 +1265,10 @@ export const updateOrderStatus = asyncHandler(async (req, res, next) => {
   const orderId = req.params.id;
   const { status, notes } = req.body;
 
+  if (["paid", "refunded", "cancelled", "returned"].includes(status)) {
+    throw new AppError("Payment, cancellation and return states must be confirmed through their dedicated workflows", 409);
+  }
+
   if (!isValidUUID(orderId)) {
     throw new AppError("Invalid order ID", 400);
   }
@@ -1713,11 +1288,13 @@ export const updateOrderStatus = asyncHandler(async (req, res, next) => {
     throw new AppError("Invalid status value", 400);
   }
 
-  const order = await getOrderById(orderId);
+  const order = await getOrderById(orderId, supabase);
   if (!order) {
     throw new AppError("Order not found", 404);
   }
 
+  const transitions={pending:['processing'],paid:['processing'],processing:['shipped']};
+  if (!transitions[order.status]?.includes(status) || (order.payment_method !== 'cod' && !order.is_paid)) throw new AppError('Order is not eligible for this fulfillment transition',409);
   const { data: updated, error } = await supabase
     .from("orders")
     .update({
@@ -1725,7 +1302,7 @@ export const updateOrderStatus = asyncHandler(async (req, res, next) => {
       notes: notes ?? order.notes,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", orderId)
+    .eq("id", orderId).eq("status",order.status).eq("updated_at",order.updated_at)
     .select()
     .single();
 
@@ -1752,44 +1329,7 @@ export const updateOrderStatus = asyncHandler(async (req, res, next) => {
  */
 export const processRefund = asyncHandler(async (req, res, next) => {
   ensureAdmin(req, next);
-
-  const orderId = req.params.id;
-  if (!isValidUUID(orderId)) {
-    throw new AppError("Invalid order ID", 400);
-  }
-
-  const order = await getOrderById(orderId);
-  if (!order) {
-    throw new AppError("Order not found", 404);
-  }
-
-  if (!order.is_paid) {
-    throw new AppError("Cannot refund an unpaid order", 400);
-  }
-
-  const { data: updated, error } = await supabase
-    .from("orders")
-    .update({
-      status: "refunded",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", orderId)
-    .select()
-    .single();
-
-  if (error) {
-    logger.error("Admin processRefund failed", {
-      error: error.message,
-    });
-    throw new AppError("Failed to process refund", 500);
-  }
-
-  logger.info("Admin processed refund", {
-    adminId: req.user?.id,
-    orderId,
-  });
-
-  res.json({ success: true, data: updated });
+  throw new AppError('Refund processing is unavailable. No money has been refunded. Contact the payment administrator.', 503);
 });
 
 /**
@@ -1807,6 +1347,7 @@ export const processReturn = asyncHandler(async (req, res, next) => {
     throw new AppError("Invalid order ID", 400);
   }
 
+  if (returnStatus === 'completed') throw new AppError('Return completion requires the inventory and refund reconciliation workflow, which is not yet available.',503);
   const allowedReturnStatuses = [
     "none",
     "requested",
@@ -1819,11 +1360,12 @@ export const processReturn = asyncHandler(async (req, res, next) => {
     throw new AppError("Invalid return status", 400);
   }
 
-  const order = await getOrderById(orderId);
+  const order = await getOrderById(orderId, supabase);
   if (!order) {
     throw new AppError("Order not found", 404);
   }
 
+  if (order.return_status !== 'requested' || !['approved','rejected'].includes(returnStatus)) throw new AppError('Return is not eligible for this transition',409);
   const { data: updated, error } = await supabase
     .from("orders")
     .update({
@@ -1831,7 +1373,7 @@ export const processReturn = asyncHandler(async (req, res, next) => {
       notes: notes ?? order.notes,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", orderId)
+    .eq("id", orderId).eq("return_status",order.return_status).eq("updated_at",order.updated_at)
     .select()
     .single();
 
@@ -1864,7 +1406,7 @@ export const approveReturn = asyncHandler(async (req, res, next) => {
     throw new AppError("Invalid order ID", 400);
   }
 
-  const order = await getOrderById(orderId);
+  const order = await getOrderById(orderId, supabase);
   if (!order) {
     throw new AppError("Order not found", 404);
   }
@@ -1879,7 +1421,7 @@ export const approveReturn = asyncHandler(async (req, res, next) => {
       return_status: "approved",
       updated_at: new Date().toISOString(),
     })
-    .eq("id", orderId)
+    .eq("id", orderId).eq("return_status","requested").eq("updated_at",order.updated_at)
     .select()
     .single();
 

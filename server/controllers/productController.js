@@ -3,10 +3,12 @@ import asyncHandler from "express-async-handler";
 import AppError from "../utils/appError.js";
 import { logger } from "../middleware/logger.js";
 import validator from "validator";
-import { supabase } from "../config/db.js";
+import { getSupabaseClient } from "../config/db.js";
 
 // Import lightweight utilities from Product model
 import { recalcProductRatings } from "../models/Product.js";
+import { PRODUCT_FIELDS, GAME_FIELDS, PREBUILT_FIELDS, REVIEW_FIELDS, OWN_REVIEW_FIELDS, mapPublicReview } from "../utils/storefrontFields.js";
+import { applyCatalogFilters, buildCatalogFacets, FACET_CANDIDATE_LIMIT, FACET_FIELDS, matchesSpecFilters, parseCatalogFilters } from "../utils/catalogFacets.js";
 
 /**
  * Validate UUID format (Supabase IDs)
@@ -197,39 +199,12 @@ const mapProduct = (row) => {
     sku: row.sku,
     isActive: row.is_active,
     isFeatured: row.is_featured,
-    salesCount: Number(row.sales_count) || 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 };
 
 const mapProducts = (rows) => (Array.isArray(rows) ? rows.map(mapProduct) : []);
-
-/**
- * Map DB review + user to API review shape
- */
-const mapReviewWithUser = (review, userLookup) => {
-  const user = (review.user_id && userLookup.get(review.user_id)) || undefined;
-
-  return {
-    id: review.id,
-    rating: review.rating,
-    title: review.title,
-    comment: review.comment,
-    createdAt: review.created_at,
-    verifiedPurchase: review.verified_purchase,
-    helpfulVotes: review.helpful_votes,
-    media: review.media,
-    user: user
-      ? {
-          id: user.id,
-          name: user.name,
-          avatar: user.avatar,
-          verified: user.is_email_verified,
-        }
-      : null,
-  };
-};
 
 // ============================================
 // PUBLIC PRODUCT CONTROLLERS
@@ -241,153 +216,64 @@ const mapReviewWithUser = (review, userLookup) => {
  * @access Public
  */
 export const getAllProducts = asyncHandler(async (req, res, next) => {
-  logger.info("Fetching products (advanced filters)", {
-    route: req.originalUrl,
-    method: req.method,
-  });
-
-  // ---------------------------------------------
-  // 1. SANITIZE QUERY
-  // ---------------------------------------------
-  const q = req.query.q ? validator.escape(req.query.q.trim()) : null;
-
-  const filters = {
-    category: req.query.category ? validator.escape(req.query.category) : null,
-    brand: req.query.brand ? validator.escape(req.query.brand) : null,
-    availability: req.query.availability
-      ? validator.escape(req.query.availability)
-      : null,
-    isFeatured:
-      typeof req.query.isFeatured !== "undefined"
-        ? req.query.isFeatured === "true"
-        : null,
-    isActive:
-      typeof req.query.isActive !== "undefined"
-        ? req.query.isActive === "true"
-        : true,
-    minPrice: req.query.minPrice ? Number(req.query.minPrice) : null,
-    maxPrice: req.query.maxPrice ? Number(req.query.maxPrice) : null,
-    minRating: req.query.minRating ? Number(req.query.minRating) : null,
-    maxRating: req.query.maxRating ? Number(req.query.maxRating) : null,
-    features: req.query.features
-      ? req.query.features.split(",").map((x) => validator.escape(x.trim()))
-      : null,
-  };
-
-  // ---------------------------------------------
-  // 2. PAGINATION
-  // ---------------------------------------------
+  const supabase = getSupabaseClient(req);
+  const filters = parseCatalogFilters(req.query);
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-  const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
+  const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 20, 100));
   const from = (page - 1) * limit;
-  const to = from + limit - 1;
-
-  // ---------------------------------------------
-  // 3. SORTING
-  // ---------------------------------------------
-  let sortRaw = req.query.sort || "-created_at";
-  let ascending = !sortRaw.startsWith("-");
-  let sortField = sortRaw.replace(/^-/, "");
-
-  const sortMap = {
-    finalPrice: "final_price",
-    name: "name",
-    createdAt: "created_at",
-    salesCount: "sales_count",
-  };
-  sortField = sortMap[sortField] || sortField;
-
-  // ---------------------------------------------
-  // 4. BUILD QUERY
-  // ---------------------------------------------
-  let query = supabase
-    .from("products")
-    .select("*", { count: "exact" })
-    .eq("is_active", filters.isActive);
-
-  // CATEGORY
-  if (filters.category) query = query.eq("category", filters.category);
-
-  // BRAND
-  if (filters.brand) query = query.eq("brand", filters.brand);
-
-  // AVAILABILITY
-  if (filters.availability)
-    query = query.eq("availability", filters.availability);
-
-  // FEATURED
-  if (filters.isFeatured !== null)
-    query = query.eq("is_featured", filters.isFeatured);
-
-  // PRICE RANGE
-  if (filters.minPrice !== null)
-    query = query.gte("final_price", filters.minPrice);
-
-  if (filters.maxPrice !== null)
-    query = query.lte("final_price", filters.maxPrice);
-
-  // SEARCH (name + description)
-  if (q && q.length >= 2) {
-    const pattern = `%${q}%`;
-    query = query.or(
-      `name.ilike.${pattern},description.ilike.${pattern},brand.ilike.${pattern}`
-    );
+  const sortRaw = typeof req.query.sort === "string" ? req.query.sort : "-created_at";
+  const ascending = !sortRaw.startsWith("-");
+  const sortMap = {finalPrice: "final_price", name: "name", createdAt: "created_at"};
+  let sortField = sortMap[sortRaw.replace(/^-/, "")] || sortRaw.replace(/^-/, "");
+  const publicSorts = new Set(["final_price", "original_price", "discount_percentage", "name", "created_at", "updated_at"]);
+  if (!publicSorts.has(sortField)) sortField = "created_at";
+  let rows, count, error;
+  if (Object.keys(filters.specs).length) {
+    // Normalize published JSON on the server, then count and page matching IDs.
+    // The compact scan is bounded; never report a truncated candidate count.
+    const candidates = await applyCatalogFilters(supabase.from("storefront_products").select(FACET_FIELDS, {count:"exact"}), filters)
+      .order(sortField, {ascending}).order("id", {ascending:true}).range(0, FACET_CANDIDATE_LIMIT);
+    if (candidates.error) return next(new AppError("Failed to load specification filters", 503));
+    if (candidates.count === null || candidates.count > FACET_CANDIDATE_LIMIT || candidates.data.length !== candidates.count) {
+      return next(new AppError(`Specification filters support up to ${FACET_CANDIDATE_LIMIT} candidates. Narrow your category, search or budget before applying specifications.`, 422));
+    }
+    const matching = candidates.data.filter((row) => matchesSpecFilters(row, filters.specs));
+    count = matching.length;
+    const ids = matching.slice(from, from + limit).map((row) => row.id);
+    if (!ids.length) rows = [];
+    else {
+      const result = await applyCatalogFilters(supabase.from("storefront_products").select(PRODUCT_FIELDS), filters)
+        .in("id", ids).order(sortField, {ascending}).order("id", {ascending:true});
+      rows = result.data; error = result.error;
+    }
+  } else {
+    const result = await applyCatalogFilters(supabase.from("storefront_products").select(PRODUCT_FIELDS, {count:"exact"}), filters)
+      .order(sortField, {ascending}).order("id", {ascending:true}).range(from, from + limit - 1);
+    rows = result.data; count = result.count; error = result.error;
   }
-
-  // FEATURES (array-contains)
-  if (filters.features && filters.features.length > 0) {
-    filters.features.forEach((f) => {
-      query = query.contains("features", [f]);
-    });
-  }
-
-  // ---------------------------------------------
-  // 5. EXECUTE BASE QUERY
-  // ---------------------------------------------
-  const {
-    data: rows,
-    error,
-    count,
-  } = await query.order(sortField, { ascending }).range(from, to);
-
   if (error) {
-    logger.error("Failed to fetch products", { error: error.message });
-    return next(new AppError("Failed to fetch products", 500));
+    logger.error("Failed to fetch products", {message:error.message || String(error)});
+    return next(new AppError("Failed to fetch products", 503));
   }
+  const products = mapProducts(rows);
+  res.status(200).json({success:true, page, limit, total:count ?? products.length, results:products.length, data:products});
+});
 
-  // ---------------------------------------------
-  // 6. POST-FILTER: RATING RANGE
-  // ---------------------------------------------
-  let filtered = rows;
-
-  if (filters.minRating !== null || filters.maxRating !== null) {
-    const minR = filters.minRating ?? 0;
-    const maxR = filters.maxRating ?? 5;
-
-    filtered = rows.filter((p) => {
-      const avg = p.ratings?.average ?? 0;
-      return avg >= minR && avg <= maxR;
-    });
-  }
-
-  const products = filtered.map(mapProduct);
-
-  // ---------------------------------------------
-  // 7. RESPONSE
-  // ---------------------------------------------
-  res.status(200).json({
-    success: true,
-    page,
-    limit,
-    total: count ?? filtered.length,
-    results: products.length,
-    data: products,
-  });
-
-  logger.info("Products fetched successfully", {
-    total: count ?? filtered.length,
-    results: products.length,
-  });
+/** Facet counts ignore brand/spec selections, retaining all other catalog filters. */
+export const getCatalogFacets = asyncHandler(async (req, res, next) => {
+  const filters = parseCatalogFilters(req.query);
+  const {data: rows, count, error} = await applyCatalogFilters(getSupabaseClient(req).from("storefront_products")
+    .select(FACET_FIELDS, {count:"exact"}), filters, {includeBrands:false}).range(0, FACET_CANDIDATE_LIMIT);
+  if (error) return next(new AppError("Filter options are temporarily unavailable", 503));
+  const complete = count !== null && count <= FACET_CANDIDATE_LIMIT && rows.length === count;
+  res.json({success:true, data:{
+    available:complete,
+    candidateLimit:FACET_CANDIDATE_LIMIT,
+    scopeTotal:count,
+    scope:"Counts reflect category, search, price, stock, rating and deal filters before brand or specification selections.",
+    ...(complete ? buildCatalogFacets(rows, filters.category) : {brands:[], specs:[]}),
+    reason:complete ? null : `Narrow your category, search or budget to ${FACET_CANDIDATE_LIMIT} products or fewer to see specification options and exact facet counts.`,
+  }});
 });
 
 /**
@@ -396,6 +282,7 @@ export const getAllProducts = asyncHandler(async (req, res, next) => {
  * @access Public
  */
 export const getProduct = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const productId = req.params.id;
 
   if (!isValidUUID(productId)) {
@@ -406,8 +293,8 @@ export const getProduct = asyncHandler(async (req, res, next) => {
   try {
     // 1) Get product
     const { data: productRow, error: productError } = await supabase
-      .from("products")
-      .select("*")
+      .from("storefront_products")
+      .select(PRODUCT_FIELDS)
       .eq("id", productId)
       .eq("is_active", true)
       .single();
@@ -420,41 +307,20 @@ export const getProduct = asyncHandler(async (req, res, next) => {
 
     // 2) Get last 10 reviews
     const { data: reviewRows, error: reviewsError } = await supabase
-      .from("reviews")
-      .select(
-        "id, user_id, rating, title, comment, created_at, verified_purchase, helpful_votes, media, is_active"
-      )
+      .from("storefront_reviews")
+      .select(REVIEW_FIELDS)
       .eq("product_id", productId)
-      .eq("is_active", true)
       .order("created_at", { ascending: false })
       .limit(10);
 
     if (reviewsError) throw reviewsError;
 
-    // 3) Get all users for those reviews
-    const userIds = [
-      ...new Set(reviewRows.map((r) => r.user_id).filter(Boolean)),
-    ];
-
-    let userLookup = new Map();
-    if (userIds.length > 0) {
-      const { data: users, error: usersError } = await supabase
-        .from("users")
-        .select("id, name, avatar, is_email_verified")
-        .in("id", userIds);
-
-      if (usersError) throw usersError;
-      userLookup = new Map(users.map((u) => [u.id, u]));
-    }
-
-    const mappedReviews = reviewRows.map((r) =>
-      mapReviewWithUser(r, userLookup)
-    );
+    const mappedReviews = reviewRows.map(mapPublicReview);
 
     // 4) Game details (if any)
     const { data: gameRow, error: gameError } = await supabase
-      .from("games")
-      .select("*")
+      .from("storefront_games")
+      .select(GAME_FIELDS)
       .eq("product_id", productId)
       .maybeSingle();
 
@@ -462,8 +328,8 @@ export const getProduct = asyncHandler(async (req, res, next) => {
 
     // 5) Prebuilt PC details (if any)
     const { data: pcRow, error: pcError } = await supabase
-      .from("prebuilt_pcs")
-      .select("*")
+      .from("storefront_prebuilt_pcs")
+      .select(PREBUILT_FIELDS)
       .eq("product_id", productId)
       .maybeSingle();
 
@@ -498,11 +364,10 @@ export const getProduct = asyncHandler(async (req, res, next) => {
  * @access Public
  */
 export const getTopProducts = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const { data: rows, error } = await supabase
-    .from("products")
-    .select(
-      "id, name, category, brand, final_price, images, ratings, stock, is_active"
-    )
+    .from("storefront_products")
+    .select(PRODUCT_FIELDS)
     .eq("is_active", true);
 
   if (error) {
@@ -542,6 +407,7 @@ export const getTopProducts = asyncHandler(async (req, res, next) => {
  * @access Public
  */
 export const getRelatedProducts = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const productId = req.params.id;
 
   if (!isValidUUID(productId)) {
@@ -549,7 +415,7 @@ export const getRelatedProducts = asyncHandler(async (req, res, next) => {
   }
 
   const { data: productRow, error: productError } = await supabase
-    .from("products")
+    .from("storefront_products")
     .select("id, category")
     .eq("id", productId)
     .eq("is_active", true)
@@ -568,10 +434,8 @@ export const getRelatedProducts = asyncHandler(async (req, res, next) => {
   }
 
   const { data: relatedRows, error: relatedError } = await supabase
-    .from("products")
-    .select(
-      "id, name, category, brand, final_price, images, ratings, is_active"
-    )
+    .from("storefront_products")
+    .select(PRODUCT_FIELDS)
     .eq("category", productRow.category)
     .eq("is_active", true)
     .neq("id", productRow.id)
@@ -605,6 +469,7 @@ export const getRelatedProducts = asyncHandler(async (req, res, next) => {
  * @access Public
  */
 export const searchProducts = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const { q } = req.query;
 
   if (!q || q.trim().length < 2) {
@@ -625,10 +490,8 @@ export const searchProducts = asyncHandler(async (req, res, next) => {
   const pattern = `%${escapedQuery}%`;
 
   const { data: rows, error } = await supabase
-    .from("products")
-    .select(
-      "id, name, category, brand, final_price, images, ratings, is_active"
-    )
+    .from("storefront_products")
+    .select(PRODUCT_FIELDS)
     .eq("is_active", true)
     .or(`name.ilike.${pattern},description.ilike.${pattern}`)
     .limit(50);
@@ -653,10 +516,10 @@ export const searchProducts = asyncHandler(async (req, res, next) => {
  * @access Public
  */
 export const getCategories = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const { data: rows, error } = await supabase
-    .from("products")
-    .select("category")
-    .eq("is_active", true);
+    .from("storefront_categories")
+    .select("category");
 
   if (error) {
     logger.error("Error fetching categories", { error: error.message });
@@ -677,12 +540,17 @@ export const getCategories = asyncHandler(async (req, res, next) => {
  * @route GET /api/products/featured
  * @access Public
  */
+export const getBrands = asyncHandler(async (req, res, next) => {
+  const {data, error} = await getSupabaseClient(req).from("storefront_brands").select("brand").order("brand");
+  if (error) return next(new AppError("Failed to fetch brands", 500));
+  res.json({success: true, data: data.map(row => row.brand)});
+});
+
 export const getFeaturedProducts = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const { data: rows, error } = await supabase
-    .from("products")
-    .select(
-      "id, name, category, brand, final_price, images, ratings, stock, is_active, is_featured"
-    )
+    .from("storefront_products")
+    .select(PRODUCT_FIELDS)
     .eq("is_featured", true)
     .eq("is_active", true)
     .gt("stock", 0)
@@ -707,6 +575,7 @@ export const getFeaturedProducts = asyncHandler(async (req, res, next) => {
  * @access Public
  */
 export const getProductsByCategory = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const category = validator.escape(req.params.category);
 
   if (!VALID_CATEGORIES.includes(category)) {
@@ -714,10 +583,8 @@ export const getProductsByCategory = asyncHandler(async (req, res, next) => {
   }
 
   const { data: rows, error } = await supabase
-    .from("products")
-    .select(
-      "id, name, category, brand, final_price, images, ratings, stock, is_active"
-    )
+    .from("storefront_products")
+    .select(PRODUCT_FIELDS)
     .eq("category", category)
     .eq("is_active", true);
 
@@ -748,6 +615,7 @@ export const getProductsByCategory = asyncHandler(async (req, res, next) => {
  * @access Private
  */
 export const createProductReview = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   req.body = sanitizeInput(req.body, { maxLength: 1000 });
 
   logger.info("Create review start", {
@@ -810,20 +678,19 @@ export const createProductReview = asyncHandler(async (req, res, next) => {
       throw new AppError("No product found with that ID", 404);
     }
 
-    // 2) Check for existing active review
+    // 2) Pending and withdrawn reviews remain editable; do not duplicate them.
     const { data: existingReviews, error: existingError } = await supabase
       .from("reviews")
       .select("id")
       .eq("user_id", userId)
       .eq("product_id", productId)
-      .eq("is_active", true)
       .limit(1);
 
     if (existingError) throw existingError;
 
     if (existingReviews && existingReviews.length > 0) {
       logger.warn("Duplicate review attempt", { productId, userId });
-      throw new AppError("Product already reviewed", 400);
+      throw new AppError("You already submitted a review. Edit your existing review.", 409);
     }
 
     // 3) Check if user purchased the product
@@ -861,20 +728,20 @@ export const createProductReview = asyncHandler(async (req, res, next) => {
           comment,
           verified_purchase: hasPurchased,
           media: media || [],
-          is_active: true,
+          is_active: false, // Pending moderation; only admin approval publishes reviews.
         },
       ])
-      .select()
+      .select(OWN_REVIEW_FIELDS)
       .single();
 
     if (insertError) throw insertError;
 
     // 5) Recalculate product ratings
-    await recalcProductRatings(productId);
+    await recalcProductRatings(productId, supabase);
 
     res.status(201).json({
       success: true,
-      message: "Review added successfully",
+      message: "Review submitted for approval",
       data: inserted,
     });
 
@@ -904,6 +771,7 @@ export const createProductReview = asyncHandler(async (req, res, next) => {
  * @access Private
  */
 export const addToWishlist = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const productId = req.params.id;
   const userId = req.user.id;
 
@@ -972,6 +840,7 @@ export const addToWishlist = asyncHandler(async (req, res, next) => {
  * @access Private
  */
 export const removeFromWishlist = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const productId = req.params.id;
   const userId = req.user.id;
 

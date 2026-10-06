@@ -2,6 +2,7 @@
 
 import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
+import { createHash } from 'node:crypto';
 import { logger } from "../middleware/logger.js";
 
 dotenv.config();
@@ -10,8 +11,16 @@ dotenv.config();
 
 // Safely parse environment variables with fallback
 const parseEnvInt = (key, fallback) => {
-  const val = parseInt(process.env[key], 10);
-  return Number.isNaN(val) ? fallback : val;
+  const val = Number(process.env[key]);
+  return Number.isSafeInteger(val) && val > 0 ? val : fallback;
+};
+
+// Production limits cannot be disabled by a development flag.
+export const skipRateLimit = () => {
+  if (!["development", "test"].includes(process.env.NODE_ENV)) return false;
+  if (process.env.RATE_LIMIT_ENABLED === "false") return true;
+  if (process.env.NODE_ENV === "test") return process.env.RATE_LIMIT_IN_TEST !== "true";
+  return process.env.RATE_LIMIT_IN_DEV !== "true";
 };
 
 /* ------------------------------- Base Settings ------------------------------ */
@@ -39,23 +48,20 @@ const MAX_LOG_REQ = parseEnvInt("RATE_LOG_MAX", 100);
 /* ---------------------------- Limiter Constructor --------------------------- */
 
 // Generic builder with logging + Retry-After header
-const buildLimiter = ({ windowMs, max, message, tag }) =>
+const buildLimiter = ({ windowMs, max, message, tag, keyGenerator }) =>
   rateLimit({
     windowMs,
     max,
     message,
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req, res) => {
-      if (process.env.RATE_LIMIT_ENABLED === "false") return true;
-      if (
-        process.env.NODE_ENV === "development" ||
-        process.env.NODE_ENV === "test"
-      ) {
-        return true;
-      }
-      return false;
-    },
+    keyGenerator:
+      keyGenerator ||
+      ((req) => {
+        const userId = req.user?.id;
+        return userId ? `user:${userId}` : `ip:${req.ip}`;
+      }),
+    skip: skipRateLimit,
     handler: (req, res, _next, options) => {
       const retryAfterSec = Math.ceil(windowMs / 1000);
 
@@ -94,6 +100,16 @@ export const authLimiter = buildLimiter({
   tag: "AUTH",
 });
 
+// Limit recovery for the destination account even across different IPs.
+// Mounted after schema validation; neither credentials nor raw email are stored.
+export const verificationAccountLimiter = buildLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  message: 'Too many verification requests. Please wait 15 minutes before trying again.',
+  tag: 'VERIFY_ACCOUNT',
+  keyGenerator: req => createHash('sha256').update(req.body.email).digest('hex'),
+});
+
 export const paymentLimiter = buildLimiter({
   windowMs: WINDOW_MS_PAYMENT,
   max: MAX_PAYMENT_ATTEMPTS,
@@ -120,4 +136,46 @@ export const logRateLimiter = buildLimiter({
   max: MAX_LOG_REQ,
   message: "Too many log requests from this IP, please try again later.",
   tag: "LOG",
+});
+
+export const userActionLimiter = buildLimiter({
+  windowMs: parseEnvInt("RATE_USER_ACTION_WINDOW_MS", WINDOW_MS_API),
+  max: parseEnvInt("RATE_USER_ACTION_MAX", 120),
+  message: "Too many actions for this account; please slow down.",
+  tag: "USER_ACTION",
+});
+
+/** Stripe webhooks — isolated from paymentLimiter (signature-verified, retry-heavy). */
+export const webhookLimiter = buildLimiter({
+  windowMs: parseEnvInt("RATE_WEBHOOK_WINDOW_MS", 60 * 1000),
+  max: parseEnvInt("RATE_WEBHOOK_MAX", 120),
+  message: "Too many webhook requests; please retry later.",
+  tag: "WEBHOOK",
+  keyGenerator: (req) => `ip:${req.ip}`,
+});
+
+/** Register / forgot / reset / resend-verify — tighter than generic auth limiter. */
+export const sensitiveAuthLimiter = rateLimit({
+  windowMs: parseEnvInt("RATE_SENSITIVE_AUTH_WINDOW_MS", 15 * 60 * 1000),
+  max: parseEnvInt("RATE_SENSITIVE_AUTH_MAX", 10),
+  message: "Too many account requests; please try again later.",
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: skipRateLimit,
+  handler: (req, res, _next, options) => {
+    const retryAfterSec = Math.ceil(
+      parseEnvInt("RATE_SENSITIVE_AUTH_WINDOW_MS", 15 * 60 * 1000) / 1000
+    );
+    logger.warn("[RATE:SENSITIVE_AUTH] Rate limit exceeded", {
+      ip: req.ip,
+      path: req.originalUrl,
+      requestId: req.requestId,
+    });
+    res.set("Retry-After", retryAfterSec);
+    res.status(options.statusCode).json({
+      status: "fail",
+      message: options.message,
+      retryAfter: retryAfterSec,
+    });
+  },
 });

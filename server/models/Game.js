@@ -1,5 +1,9 @@
 // server/models/Game.js
-import { supabase } from "../config/db.js";
+import { GAME_FIELDS } from "../utils/storefrontFields.js";
+const requireClient = (client) => {
+  if (!client) throw new Error("Supabase client is required");
+  return client;
+};
 
 /* ===========================================================
    MAP
@@ -35,8 +39,9 @@ const mapGameRow = (row) => {
    CRUD
 =========================================================== */
 
-export const createGame = async (payload) => {
-  const { data, error } = await supabase
+export const createGame = async (payload, client) => {
+  const db = requireClient(client);
+  const { data, error } = await db
     .from("games")
     .insert([
       {
@@ -64,10 +69,11 @@ export const createGame = async (payload) => {
   return mapGameRow(data);
 };
 
-export const getGameByProductId = async (productId) => {
-  const { data, error } = await supabase
+export const getGameByProductId = async (productId, client) => {
+  const db = requireClient(client);
+  const { data, error } = await db
     .from("games")
-    .select("*")
+    .select(GAME_FIELDS)
     .eq("product_id", productId)
     .maybeSingle();
 
@@ -75,7 +81,8 @@ export const getGameByProductId = async (productId) => {
   return data ? mapGameRow(data) : null;
 };
 
-export const updateGame = async (id, updates) => {
+export const updateGame = async (id, updates, client) => {
+  const db = requireClient(client);
   const dbUpdates = {
     genre: updates.genre,
     platform: updates.platform,
@@ -98,7 +105,7 @@ export const updateGame = async (id, updates) => {
     (key) => dbUpdates[key] === undefined && delete dbUpdates[key]
   );
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("games")
     .update(dbUpdates)
     .eq("id", id)
@@ -109,8 +116,9 @@ export const updateGame = async (id, updates) => {
   return mapGameRow(data);
 };
 
-export const deleteGame = async (id) => {
-  const { error } = await supabase.from("games").delete().eq("id", id);
+export const deleteGame = async (id, client) => {
+  const db = requireClient(client);
+  const { error } = await db.from("games").delete().eq("id", id);
   if (error) throw new Error(error.message);
   return true;
 };

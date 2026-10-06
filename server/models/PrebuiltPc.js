@@ -1,5 +1,9 @@
 // server/models/PrebuiltPc.js
-import { supabase } from "../config/db.js";
+import { PREBUILT_FIELDS } from "../utils/storefrontFields.js";
+const requireClient = (client) => {
+  if (!client) throw new Error("Supabase client is required");
+  return client;
+};
 
 /* ===========================================================
    MAP
@@ -37,8 +41,9 @@ const mapPrebuiltPcRow = (row) => {
    CRUD
 =========================================================== */
 
-export const createPrebuiltPc = async (payload) => {
-  const { data, error } = await supabase
+export const createPrebuiltPc = async (payload, client) => {
+  const db = requireClient(client);
+  const { data, error } = await db
     .from("prebuilt_pcs")
     .insert([
       {
@@ -70,10 +75,11 @@ export const createPrebuiltPc = async (payload) => {
   return mapPrebuiltPcRow(data);
 };
 
-export const getPrebuiltPcByProductId = async (productId) => {
-  const { data, error } = await supabase
+export const getPrebuiltPcByProductId = async (productId, client) => {
+  const db = requireClient(client);
+  const { data, error } = await db
     .from("prebuilt_pcs")
-    .select("*")
+    .select(PREBUILT_FIELDS)
     .eq("product_id", productId)
     .maybeSingle();
 
@@ -81,7 +87,8 @@ export const getPrebuiltPcByProductId = async (productId) => {
   return data ? mapPrebuiltPcRow(data) : null;
 };
 
-export const updatePrebuiltPc = async (id, updates) => {
+export const updatePrebuiltPc = async (id, updates, client) => {
+  const db = requireClient(client);
   const dbUpdates = {
     name: updates.name,
     description: updates.description,
@@ -108,7 +115,7 @@ export const updatePrebuiltPc = async (id, updates) => {
     (key) => dbUpdates[key] === undefined && delete dbUpdates[key]
   );
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("prebuilt_pcs")
     .update(dbUpdates)
     .eq("id", id)
@@ -119,8 +126,9 @@ export const updatePrebuiltPc = async (id, updates) => {
   return mapPrebuiltPcRow(data);
 };
 
-export const deletePrebuiltPc = async (id) => {
-  const { error } = await supabase.from("prebuilt_pcs").delete().eq("id", id);
+export const deletePrebuiltPc = async (id, client) => {
+  const db = requireClient(client);
+  const { error } = await db.from("prebuilt_pcs").delete().eq("id", id);
 
   if (error) throw new Error(error.message);
   return true;

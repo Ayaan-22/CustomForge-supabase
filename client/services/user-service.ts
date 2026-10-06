@@ -1,4 +1,5 @@
 import { apiFetch, type ApiResponse } from "@/lib/apiClient";
+import { WishlistItemSchema } from "@/lib/schema";
 import type {
   Order,
   User,
@@ -14,15 +15,15 @@ export type AddressPayload = Omit<Address, "id" | "isDefault" | "userId" | "line
 export type UpdateAddressPayload = Partial<AddressPayload>;
 
 export const UserService = {
-  me(): Promise<ApiResponse<{ user: User }>> {
+  me(): Promise<ApiResponse<User | null>> {
     return apiFetch("/users/me", { method: "GET" });
   },
 
   updateMe(
     payload: UpdateMePayload,
     twoFactorToken?: string
-  ): Promise<ApiResponse<{ user: User }>> {
-    return apiFetch("/users/update-me", {
+  ): Promise<ApiResponse<User>> {
+    return apiFetch("/users/profile", {
       method: "PATCH",
       body: payload,
       headers: twoFactorToken ? { "x-2fa-token": twoFactorToken } : undefined,
@@ -30,25 +31,32 @@ export const UserService = {
   },
 
   deleteMe(twoFactorToken?: string): Promise<ApiResponse<{ message: string }>> {
-    return apiFetch("/users/delete-me", {
+    return apiFetch("/users/delete-account", {
       method: "DELETE",
       headers: twoFactorToken ? { "x-2fa-token": twoFactorToken } : undefined,
     });
   },
 
   changePassword(
-    payload: any,
+    payload: import("./auth-service").UpdatePasswordPayload,
     twoFactorToken?: string
   ): Promise<ApiResponse<{ message: string }>> {
-    return apiFetch("/users/change-password", {
+    return apiFetch("/auth/update-password", {
       method: "PATCH",
       body: payload,
       headers: twoFactorToken ? { "x-2fa-token": twoFactorToken } : undefined,
     });
   },
 
-  wishlist(): Promise<ApiResponse<WishlistItem[]>> {
-    return apiFetch("/users/wishlist", { method: "GET" });
+  async wishlist(): Promise<ApiResponse<WishlistItem[]>> {
+    const response = await apiFetch<unknown>("/users/wishlist", { method: "GET" });
+    if (response.error) return { ...response, data: null };
+    const parsed = WishlistItemSchema.array().safeParse(response.data);
+    if (!parsed.success) return {
+      data: null, status: 502,
+      error: { status: 502, message: "Unable to load your saved items. Please try again." },
+    };
+    return { ...response, data: parsed.data };
   },
 
   addToWishlist(productId: string): Promise<ApiResponse<{ message: string }>> {
@@ -66,7 +74,7 @@ export const UserService = {
   },
 
   orders(): Promise<ApiResponse<Order[]>> {
-    return apiFetch("/users/orders", { method: "GET" });
+    return apiFetch("/orders", { method: "GET" });
   },
 
   getAddresses(): Promise<ApiResponse<Address[]>> {

@@ -1,6 +1,8 @@
 import { create } from "zustand"
 
 interface AuthState {
+  twoFactorToken: string | null
+  setTwoFactorToken: (token: string | null) => void
   accessToken: string | null
   user: {
     id: string
@@ -18,11 +20,13 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
+  twoFactorToken: null,
+  setTwoFactorToken: (twoFactorToken) => set({ twoFactorToken }),
   accessToken: null,
   user: null,
   requiresTwoFactor: false,
   setToken: (token: string) => set({ accessToken: token }),
   setUser: (user) => set({ user }),
-  clearAuth: () => set({ accessToken: null, user: null, requiresTwoFactor: false }),
+  clearAuth: () => set({ accessToken: null, user: null, requiresTwoFactor: false, twoFactorToken: null }),
   setRequiresTwoFactor: (value: boolean) => set({ requiresTwoFactor: value }),
 }))

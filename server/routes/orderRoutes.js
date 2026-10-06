@@ -1,4 +1,5 @@
 // File: server/routes/orderRoutes.js
+// Mount: /api/v1/orders — all routes require authentication.
 import express from "express";
 import {
   createOrder,
@@ -8,42 +9,23 @@ import {
   cancelOrder,
   requestReturn,
 } from "../controllers/orderController.js";
-import { protect } from "../middleware/authMiddleware.js";
+import { protect, verifiedEmail } from "../middleware/authMiddleware.js";
+import { validate } from "../middleware/validate.js";
+import { createOrderSchema } from "../validation/orderSchemas.js";
 
 const router = express.Router();
 
-// All order routes require authentication
+// All order routes require a logged-in, verified account.
 router.use(protect);
+router.use(verifiedEmail);
 
 /**
- * ORDER CREATION (STRICT COUPON VALIDATION)
- * POST /api/orders → convert cart → order (strict validation here)
- * GET  /api/orders → get user's order history
+ * Static-ish paths before `/:id` so "cancel" / "request-return" cannot be captured as ids.
  */
-router.route("/").post(createOrder).get(getMyOrders);
-
-/**
- * ORDER DETAILS
- * GET /api/orders/:id → fetch specific order
- */
-router.route("/:id").get(getOrderById);
-
-/**
- * PAYMENT STATUS POLLING
- * GET /api/orders/:id/payment-status
- */
-router.route("/:id/payment-status").get(getPaymentStatus);
-
-/**
- * ORDER CANCELLATION
- * POST /api/orders/cancel/:id
- */
+router.route("/").post(validate(createOrderSchema), createOrder).get(getMyOrders);
 router.post("/cancel/:id", cancelOrder);
-
-/**
- * RETURN REQUEST
- * POST /api/orders/request-return/:id
- */
 router.post("/request-return/:id", requestReturn);
+router.get("/:id/payment-status", getPaymentStatus);
+router.get("/:id", getOrderById);
 
 export default router;

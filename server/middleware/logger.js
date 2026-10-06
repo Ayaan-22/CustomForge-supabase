@@ -251,6 +251,8 @@ const createDailyFileTransport = ({ filename, level = "info" }) => {
     level,
     filename: path.join(CONFIG.LOG_DIR, filename),
     datePattern: "YYYY-MM-DD",
+    // The admin log reader uses this same server-local calendar day.
+    utc: false,
     zippedArchive: true,
     maxSize: CONFIG.MAX_LOG_SIZE,
     maxFiles: CONFIG.MAX_LOG_FILES,

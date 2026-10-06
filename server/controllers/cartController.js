@@ -3,7 +3,7 @@
 import asyncHandler from "express-async-handler";
 import AppError from "../utils/appError.js";
 import { logger } from "../middleware/logger.js";
-import { supabase } from "../config/db.js";
+import { getSupabaseClient } from "../config/db.js";
 
 // Coupon helpers (Supabase model)
 // These should be implemented in ../models/Coupon.js in Supabase style
@@ -12,6 +12,7 @@ import {
   isCouponCurrentlyValid,
   isCouponApplicableToProducts,
   computeCouponDiscount,
+  mapCouponRow,
 } from "../models/Coupon.js";
 
 // ------------------------------------------------------------------
@@ -54,7 +55,7 @@ const validateQuantity = (quantity, fieldName = "quantity") => {
 /**
  * Create or get cart row for user (no joins)
  */
-const getOrCreateCartRow = async (userId) => {
+const getOrCreateCartRow = async (supabase, userId) => {
   if (!isValidUUID(userId)) {
     throw new AppError("Valid user ID is required", 400);
   }
@@ -86,7 +87,7 @@ const getOrCreateCartRow = async (userId) => {
 /**
  * Load cart with items, products and coupon populated
  */
-const loadCartWithDetails = async (userId) => {
+const loadCartWithDetails = async (supabase, userId) => {
   if (!isValidUUID(userId)) {
     throw new AppError("Valid user ID is required", 400);
   }
@@ -136,7 +137,7 @@ const loadCartWithDetails = async (userId) => {
 
   if (!cart) {
     // If cart row didn't exist, create and return empty cart
-    const baseCart = await getOrCreateCartRow(userId);
+    const baseCart = await getOrCreateCartRow(supabase, userId);
     return {
       id: baseCart.id,
       user_id: baseCart.user_id,
@@ -157,7 +158,7 @@ const loadCartWithDetails = async (userId) => {
  *   coupon: {...} | null
  * }
  */
-const computeCartTotals = (cart) => {
+export const computeCartTotals = (cart) => {
   if (!cart) {
     throw new AppError("Cart is required for total calculation", 500);
   }
@@ -211,7 +212,8 @@ const computeCartTotals = (cart) => {
   let couponError = null;
 
   if (cart.coupon) {
-    const coupon = cart.coupon;
+    // Joined cart rows are snake_case; findActiveCouponByCode returns a DTO.
+    const coupon = 'discount_type' in cart.coupon ? mapCouponRow(cart.coupon) : cart.coupon;
     const now = new Date();
 
     // 1) Basic validity (active, date range, usage limits)
@@ -219,9 +221,9 @@ const computeCartTotals = (cart) => {
 
     if (!basicValidity.valid) {
       couponError = basicValidity.reason;
-    } else if (coupon.min_purchase && subtotal < Number(coupon.min_purchase)) {
+    } else if (coupon.minPurchase && subtotal < Number(coupon.minPurchase)) {
       couponError = `Minimum order amount for this coupon is ${Number(
-        coupon.min_purchase
+        coupon.minPurchase
       ).toFixed(2)}`;
     } else {
       // 2) Product-level applicability
@@ -235,21 +237,32 @@ const computeCartTotals = (cart) => {
         discount = computeCouponDiscount(coupon, subtotal);
         couponSummary = {
           code: coupon.code,
-          discountType: coupon.discount_type,
-          discountValue: Number(coupon.discount_value),
+          discountType: coupon.discountType,
+          discountValue: Number(coupon.discountValue),
           discountAmount: discount,
         };
       }
     }
   }
 
-  const finalPrice = Math.max(0, subtotal - discount);
+  // Match checkout_cart's current policy: $10 below $100 after discounts,
+  // otherwise free shipping, and 10% tax on the discounted merchandise.
+  // Use integer cents for addition and tax rounding. Checkout still revalidates
+  // prices/coupons/stock transactionally; this endpoint does not reserve stock.
+  const subtotalCents = Math.round((subtotal + Number.EPSILON * subtotal) * 100);
+  const discountCents = Math.round((discount + Number.EPSILON * discount) * 100);
+  const netCents = Math.max(0, subtotalCents - discountCents);
+  const shippingCents = items.length && netCents < 10000 ? 1000 : 0;
+  const taxCents = Math.round(netCents / 10);
 
   return {
     items,
-    subtotal: Number(subtotal.toFixed(2)),
-    discount: Number(discount.toFixed(2)),
-    finalPrice: Number(finalPrice.toFixed(2)),
+    subtotal: subtotalCents / 100,
+    discount: discountCents / 100,
+    finalPrice: netCents / 100, // Compatibility: merchandise after discount.
+    shipping: shippingCents / 100,
+    tax: taxCents / 100,
+    total: (netCents + shippingCents + taxCents) / 100,
     coupon: couponSummary,
     couponError,
     warnings: warnings.length ? warnings : undefined,
@@ -265,9 +278,10 @@ const computeCartTotals = (cart) => {
  * Get current user's cart with totals
  */
 export const getCart = asyncHandler(async (req, res) => {
+  const supabase = getSupabaseClient(req);
   logger.info("Get cart", { userId: req.user.id });
 
-  const cart = await loadCartWithDetails(req.user.id);
+  const cart = await loadCartWithDetails(supabase, req.user.id);
   const totals = computeCartTotals(cart);
 
   res.status(200).json({
@@ -285,6 +299,7 @@ export const getCart = asyncHandler(async (req, res) => {
  * body: { productId, quantity }
  */
 export const addToCart = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   logger.info("Add to cart", { userId: req.user.id });
 
   const rawProductId = req.body.productId || req.body.product;
@@ -313,7 +328,7 @@ export const addToCart = asyncHandler(async (req, res, next) => {
     }
 
     // 2) Get or create cart row
-    const cartRow = await getOrCreateCartRow(req.user.id);
+    const cartRow = await getOrCreateCartRow(supabase, req.user.id);
 
     // 3) Check existing cart item
     const { data: existingItem, error: existingError } = await supabase
@@ -361,7 +376,7 @@ export const addToCart = asyncHandler(async (req, res, next) => {
     }
 
     // 5) Reload cart with populated details
-    const populatedCart = await loadCartWithDetails(req.user.id);
+    const populatedCart = await loadCartWithDetails(supabase, req.user.id);
     const totals = computeCartTotals(populatedCart);
 
     res.status(200).json({
@@ -390,6 +405,7 @@ export const addToCart = asyncHandler(async (req, res, next) => {
  * body: { productId, quantity }
  */
 export const updateCartItem = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   logger.info("Update cart item", { userId: req.user.id });
 
   const rawProductId = req.body.productId || req.body.product;
@@ -401,7 +417,7 @@ export const updateCartItem = asyncHandler(async (req, res, next) => {
   const quantity = validateQuantity(req.body.quantity);
 
   try {
-    const cartRow = await getOrCreateCartRow(req.user.id);
+    const cartRow = await getOrCreateCartRow(supabase, req.user.id);
 
     // Check existing cart item
     const { data: existingItem, error: existingError } = await supabase
@@ -448,7 +464,7 @@ export const updateCartItem = asyncHandler(async (req, res, next) => {
 
     if (updateError) throw updateError;
 
-    const populatedCart = await loadCartWithDetails(req.user.id);
+    const populatedCart = await loadCartWithDetails(supabase, req.user.id);
     const totals = computeCartTotals(populatedCart);
 
     res.status(200).json({
@@ -476,6 +492,7 @@ export const updateCartItem = asyncHandler(async (req, res, next) => {
  * Remove item from cart
  */
 export const removeFromCart = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   logger.info("Remove from cart", { userId: req.user.id });
 
   const rawProductId = req.params.id || req.body.productId || req.body.product;
@@ -485,7 +502,7 @@ export const removeFromCart = asyncHandler(async (req, res, next) => {
   const productId = rawProductId;
 
   try {
-    const cartRow = await getOrCreateCartRow(req.user.id);
+    const cartRow = await getOrCreateCartRow(supabase, req.user.id);
 
     const { data: item, error: itemError } = await supabase
       .from("cart_items")
@@ -507,7 +524,7 @@ export const removeFromCart = asyncHandler(async (req, res, next) => {
 
     if (deleteError) throw deleteError;
 
-    const populatedCart = await loadCartWithDetails(req.user.id);
+    const populatedCart = await loadCartWithDetails(supabase, req.user.id);
     const totals = computeCartTotals(populatedCart);
 
     res.status(200).json({
@@ -535,10 +552,11 @@ export const removeFromCart = asyncHandler(async (req, res, next) => {
  * Clear entire cart
  */
 export const clearCart = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   logger.info("Clear cart", { userId: req.user.id });
 
   try {
-    const cartRow = await getOrCreateCartRow(req.user.id);
+    const cartRow = await getOrCreateCartRow(supabase, req.user.id);
 
     // Delete all items
     const { error: itemsError } = await supabase
@@ -556,7 +574,7 @@ export const clearCart = asyncHandler(async (req, res, next) => {
 
     if (cartUpdateError) throw cartUpdateError;
 
-    const populatedCart = await loadCartWithDetails(req.user.id);
+    const populatedCart = await loadCartWithDetails(supabase, req.user.id);
     const totals = computeCartTotals(populatedCart);
 
     res.status(200).json({
@@ -584,6 +602,7 @@ export const clearCart = asyncHandler(async (req, res, next) => {
  * body: { code }
  */
 export const applyCoupon = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const rawCode = req.body.code || req.body.couponCode;
   if (!rawCode || typeof rawCode !== "string") {
     throw new AppError("Coupon code is required", 400);
@@ -594,14 +613,14 @@ export const applyCoupon = asyncHandler(async (req, res, next) => {
 
   try {
     // 1) Load cart with items
-    const cart = await loadCartWithDetails(req.user.id);
+    const cart = await loadCartWithDetails(supabase, req.user.id);
 
     if (!cart.items || cart.items.length === 0) {
       throw new AppError("Cannot apply coupon to an empty cart", 400);
     }
 
     // 2) Fetch active coupon from DB (with Supabase logic in Coupon model)
-    const coupon = await findActiveCouponByCode(code);
+    const coupon = await findActiveCouponByCode(code, supabase);
     if (!coupon) {
       throw new AppError("Invalid or expired coupon", 400);
     }
@@ -618,7 +637,7 @@ export const applyCoupon = asyncHandler(async (req, res, next) => {
     }
 
     // 4) Persist coupon relation on cart
-    const cartRow = await getOrCreateCartRow(req.user.id);
+    const cartRow = await getOrCreateCartRow(supabase, req.user.id);
     const { error: updateError } = await supabase
       .from("carts")
       .update({ coupon_id: coupon.id })
@@ -627,7 +646,7 @@ export const applyCoupon = asyncHandler(async (req, res, next) => {
     if (updateError) throw updateError;
 
     // Reload final cart with coupon populated
-    const finalCart = await loadCartWithDetails(req.user.id);
+    const finalCart = await loadCartWithDetails(supabase, req.user.id);
     const finalTotals = computeCartTotals(finalCart);
 
     res.status(200).json({
@@ -655,10 +674,11 @@ export const applyCoupon = asyncHandler(async (req, res, next) => {
  * Remove coupon from cart
  */
 export const removeCoupon = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   logger.info("Remove coupon from cart", { userId: req.user.id });
 
   try {
-    const cartRow = await getOrCreateCartRow(req.user.id);
+    const cartRow = await getOrCreateCartRow(supabase, req.user.id);
 
     // Remove coupon reference
     const { error: updateError } = await supabase
@@ -668,7 +688,7 @@ export const removeCoupon = asyncHandler(async (req, res, next) => {
 
     if (updateError) throw updateError;
 
-    const finalCart = await loadCartWithDetails(req.user.id);
+    const finalCart = await loadCartWithDetails(supabase, req.user.id);
     const totals = computeCartTotals(finalCart);
 
     res.status(200).json({

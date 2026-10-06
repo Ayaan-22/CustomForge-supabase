@@ -2,12 +2,22 @@
 import asyncHandler from "express-async-handler";
 import AppError from "../utils/appError.js";
 import { logger } from "../middleware/logger.js";
-import { supabase } from "../config/db.js";
+import { getSupabaseClient } from "../config/db.js";
 import { updateReview, softDeleteReview } from "../models/Review.js";
 import { recalcProductRatings } from "../models/Product.js";
+import { REVIEW_FIELDS, OWN_REVIEW_FIELDS, mapPublicReview } from "../utils/storefrontFields.js";
 
 const isValidUUID = (value) =>
   typeof value === "string" && /^[0-9a-fA-F-]{36}$/.test(value);
+
+// Private account data must never be added to the anonymous review projection.
+export const getOwnProductReview = asyncHandler(async (req,res) => {
+  if (!isValidUUID(req.params.id)) throw new AppError("Invalid product ID",400);
+  const db=getSupabaseClient(req);
+  const {data,error}=await db.from("reviews").select(OWN_REVIEW_FIELDS).eq("product_id",req.params.id).eq("user_id",req.user.id).order("created_at",{ascending:false}).limit(1).maybeSingle();
+  if(error) throw new AppError("Unable to load your review",500);
+  res.json({success:true,data:data ? {...mapPublicReview(data),productId:data.product_id,isActive:data.is_active} : null});
+});
 
 /**
  * @desc Update review
@@ -15,6 +25,7 @@ const isValidUUID = (value) =>
  * @access Private
  */
 export const updateReviewController = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const reviewId = req.params.reviewId;
 
   if (!isValidUUID(reviewId)) {
@@ -24,7 +35,7 @@ export const updateReviewController = asyncHandler(async (req, res, next) => {
   // Check ownership
   const { data: review, error: fetchError } = await supabase
     .from("reviews")
-    .select("*")
+    .select(OWN_REVIEW_FIELDS)
     .eq("id", reviewId)
     .eq("user_id", req.user.id)
     .maybeSingle();
@@ -56,6 +67,7 @@ export const updateReviewController = asyncHandler(async (req, res, next) => {
   }
 
   const updates = {
+    isActive: false, // Customer edits must be moderated again before publication.
     rating,
     title,
     comment,
@@ -66,7 +78,7 @@ export const updateReviewController = asyncHandler(async (req, res, next) => {
     (key) => updates[key] === undefined && delete updates[key]
   );
 
-  const updated = await updateReview(reviewId, updates);
+  const updated = await updateReview(reviewId, updates, supabase);
 
   res.status(200).json({
     success: true,
@@ -82,6 +94,7 @@ export const updateReviewController = asyncHandler(async (req, res, next) => {
  * @access Private
  */
 export const deleteReviewController = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const reviewId = req.params.reviewId;
 
   if (!isValidUUID(reviewId)) {
@@ -104,7 +117,7 @@ export const deleteReviewController = asyncHandler(async (req, res, next) => {
     return next(new AppError("Review not found", 404));
   }
 
-  await softDeleteReview(reviewId);
+  await softDeleteReview(reviewId, supabase);
 
   res.status(204).json({
     success: true,
@@ -120,6 +133,7 @@ export const deleteReviewController = asyncHandler(async (req, res, next) => {
  * @access Public
  */
 export const getProductReviews = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const productId = req.params.id;
 
   if (!isValidUUID(productId)) {
@@ -136,21 +150,9 @@ export const getProductReviews = asyncHandler(async (req, res, next) => {
     error,
     count,
   } = await supabase
-    .from("reviews")
-    .select(
-      `
-      *,
-      user:users (
-        id,
-        name,
-        avatar,
-        is_email_verified
-      )
-    `,
-      { count: "exact" }
-    )
+    .from("storefront_reviews")
+    .select(REVIEW_FIELDS, { count: "exact" })
     .eq("product_id", productId)
-    .eq("is_active", true)
     .order("created_at", { ascending: false })
     .range(from, to);
 
@@ -158,24 +160,7 @@ export const getProductReviews = asyncHandler(async (req, res, next) => {
     return next(new AppError("Failed to fetch reviews", 500));
   }
 
-  const mappedReviews = reviews.map((review) => ({
-    id: review.id,
-    rating: review.rating,
-    title: review.title,
-    comment: review.comment,
-    createdAt: review.created_at,
-    verifiedPurchase: review.verified_purchase,
-    helpfulVotes: review.helpful_votes,
-    media: review.media,
-    user: review.user
-      ? {
-          id: review.user.id,
-          name: review.user.name,
-          avatar: review.user.avatar,
-          verified: review.user.is_email_verified,
-        }
-      : null,
-  }));
+  const mappedReviews = reviews.map(mapPublicReview);
 
   res.status(200).json({
     success: true,

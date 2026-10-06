@@ -1,3 +1,4 @@
+import {validatePaymentMetadata, publicPaymentMetadata} from "../utils/paymentMetadata.js";
 // server/controllers/userController.js
 import asyncHandler from "express-async-handler";
 import AppError from "../utils/appError.js";
@@ -7,7 +8,6 @@ import { logger } from "../middleware/logger.js";
 import {
   findUserById,
   updateUser,
-  getWishlist,
   getUserAddresses as fetchUserAddresses,
   addUserAddress as createUserAddress,
   setDefaultAddress as setUserDefaultAddress,
@@ -20,7 +20,21 @@ import {
 import { getUserOrders as fetchUserOrders } from "../models/Order.js";
 import { mapOrderToFrontend } from "../utils/orderTransform.js";
 
-import { supabase } from "../config/db.js";
+import { getSupabaseClient } from "../config/db.js";
+import { publicUser } from "../utils/publicUser.js";
+
+// Keep the same contract in /me and /wishlist. A product hidden by RLS
+// still needs an identifier so its owner can remove the saved entry.
+const wishlistItem = (row) => ({
+  id: row.product_id,
+  productId: row.product_id,
+  ...(row.products ? {
+    name: row.products.name,
+    image: row.products.images?.[0] || null,
+    finalPrice: row.products.final_price,
+    category: row.products.category,
+  } : {}),
+});
 
 /* ===========================================================
    filterObj — SAME LOGIC AS ORIGINAL
@@ -39,12 +53,20 @@ const filterObj = (obj, ...allowedFields) => {
 };
 
 /* ===========================================================
-   @desc   GET LOGGED-IN USER PROFILE
+   @desc   Current user session (optional auth)
    @route  GET /api/users/me
-   @access Private
+   @access Public — returns data: null when anonymous; full profile when Bearer token valid
 =========================================================== */
 export const getMe = asyncHandler(async (req, res, next) => {
-  const user = await findUserById(req.user.id);
+  if (!req.user) {
+    return res.status(200).json({
+      success: true,
+      data: null,
+    });
+  }
+
+  const supabase = getSupabaseClient(req);
+  const user = await findUserById(req.user.id, {}, supabase);
 
   if (!user) {
     return next(new AppError("User not found", 404));
@@ -69,18 +91,12 @@ export const getMe = asyncHandler(async (req, res, next) => {
 
   if (error) throw new Error(error.message);
 
-  const populatedWishlist = wishlistRows.map((row) => ({
-    id: row.products.id,
-    name: row.products.name,
-    image: row.products.images?.[0] || null,
-    finalPrice: row.products.final_price,
-    category: row.products.category,
-  }));
+  const populatedWishlist = wishlistRows.map(wishlistItem);
 
   res.status(200).json({
     success: true,
     data: {
-      ...user,
+      ...publicUser(user),
       wishlist: populatedWishlist,
     },
   });
@@ -94,6 +110,7 @@ export const getMe = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const updateMe = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   logger.info("Update self start", {
     userId: req.user.id,
     bodyKeys: Object.keys(req.body || {}),
@@ -112,16 +129,16 @@ export const updateMe = asyncHandler(async (req, res, next) => {
     "address"
   );
 
-  const existingUser = await findUserById(req.user.id);
+  const existingUser = await findUserById(req.user.id, {}, supabase);
   if (!existingUser) {
     return next(new AppError("User not found", 404));
   }
 
-  const updated = await updateUser(req.user.id, filteredBody);
+  const updated = await updateUser(req.user.id, filteredBody, supabase);
 
   res.status(200).json({
     success: true,
-    data: updated,
+    data: publicUser(updated),
   });
 
   logger.info("Updated self", { userId: req.user.id });
@@ -133,10 +150,11 @@ export const updateMe = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const deleteMe = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   logger.info("Deactivate self start", { userId: req.user.id });
 
   // Set active:false (Supabase update)
-  const updated = await updateUser(req.user.id, { active: false });
+  const updated = await updateUser(req.user.id, { active: false }, supabase);
 
   if (!updated) {
     return next(new AppError("User not found", 404));
@@ -156,7 +174,8 @@ export const deleteMe = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const getWishlistController = asyncHandler(async (req, res, next) => {
-  const user = await findUserById(req.user.id);
+  const supabase = getSupabaseClient(req);
+  const user = await findUserById(req.user.id, {}, supabase);
 
   if (!user) {
     return next(new AppError("User not found", 404));
@@ -181,13 +200,7 @@ export const getWishlistController = asyncHandler(async (req, res, next) => {
 
   if (error) throw new Error(error.message);
 
-  const mapped = rows.map((row) => ({
-    id: row.products.id,
-    name: row.products.name,
-    image: row.products.images?.[0] || null,
-    finalPrice: row.products.final_price,
-    category: row.products.category,
-  }));
+  const mapped = rows.map(wishlistItem);
 
   res.status(200).json({
     success: true,
@@ -207,10 +220,11 @@ export const getWishlistController = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const getUserOrders = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const result = await fetchUserOrders(req.user.id, {
     page: parseInt(req.query.page, 10) || 1,
     limit: parseInt(req.query.limit, 10) || 10,
-  });
+  }, supabase);
 
   // Transform orders to frontend format
   const transformedOrders = result.orders.map(mapOrderToFrontend);
@@ -236,6 +250,7 @@ export const getUserOrders = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const changePassword = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const { passwordCurrent, password, passwordConfirm } = req.body;
 
   if (!passwordCurrent || !password || !passwordConfirm) {
@@ -251,7 +266,7 @@ export const changePassword = asyncHandler(async (req, res, next) => {
     return next(new AppError("Passwords do not match", 400));
   }
 
-  const user = await findUserById(req.user.id, { includePassword: true });
+  const user = await findUserById(req.user.id, { includePassword: true }, supabase);
 
   if (!user) return next(new AppError("User not found", 404));
 
@@ -262,7 +277,7 @@ export const changePassword = asyncHandler(async (req, res, next) => {
   await updateUser(req.user.id, {
     password,
     passwordChangedAt: new Date().toISOString(),
-  });
+  }, supabase);
 
   res.status(200).json({
     success: true,
@@ -278,6 +293,7 @@ export const changePassword = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const addToWishlist = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const productId = req.params.productId;
 
   if (!productId || !/^[0-9a-fA-F-]{36}$/.test(productId)) {
@@ -308,6 +324,7 @@ export const addToWishlist = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const removeFromWishlist = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const productId = req.params.productId;
 
   if (!productId || !/^[0-9a-fA-F-]{36}$/.test(productId)) {
@@ -339,7 +356,8 @@ export const removeFromWishlist = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const getUserAddresses = asyncHandler(async (req, res, next) => {
-  const addresses = await fetchUserAddresses(req.user.id);
+  const supabase = getSupabaseClient(req);
+  const addresses = await fetchUserAddresses(req.user.id, supabase);
 
   res.status(200).json({
     success: true,
@@ -359,7 +377,8 @@ export const getUserAddresses = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const addUserAddress = asyncHandler(async (req, res, next) => {
-  const address = await createUserAddress(req.user.id, req.body);
+  const supabase = getSupabaseClient(req);
+  const address = await createUserAddress(req.user.id, req.body, supabase);
 
   res.status(201).json({
     success: true,
@@ -375,6 +394,7 @@ export const addUserAddress = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const updateUserAddress = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const addressId = req.params.id;
 
   if (!addressId || !/^[0-9a-fA-F-]{36}$/.test(addressId)) {
@@ -457,13 +477,14 @@ export const updateUserAddress = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const setDefaultAddress = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const addressId = req.params.id;
 
   if (!addressId || !/^[0-9a-fA-F-]{36}$/.test(addressId)) {
     return next(new AppError("Invalid address ID", 400));
   }
 
-  const address = await setUserDefaultAddress(req.user.id, addressId);
+  const address = await setUserDefaultAddress(req.user.id, addressId, supabase);
 
   res.status(200).json({
     success: true,
@@ -479,6 +500,7 @@ export const setDefaultAddress = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const deleteUserAddress = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const addressId = req.params.id;
 
   if (!addressId || !/^[0-9a-fA-F-]{36}$/.test(addressId)) {
@@ -509,12 +531,13 @@ export const deleteUserAddress = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const getUserPaymentMethods = asyncHandler(async (req, res, next) => {
-  const methods = await fetchUserPaymentMethods(req.user.id);
+  const supabase = getSupabaseClient(req);
+  const methods = await fetchUserPaymentMethods(req.user.id, supabase);
 
   res.status(200).json({
     success: true,
     results: methods.length,
-    data: methods,
+    data: methods.map(publicPaymentMetadata),
   });
 
   logger.info("Fetched user payment methods", {
@@ -529,11 +552,13 @@ export const getUserPaymentMethods = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const addUserPaymentMethod = asyncHandler(async (req, res, next) => {
-  const method = await createUserPaymentMethod(req.user.id, req.body);
+  validatePaymentMetadata(req.body);
+  const supabase = getSupabaseClient(req);
+  const method = await createUserPaymentMethod(req.user.id, req.body, supabase);
 
   res.status(201).json({
     success: true,
-    data: method,
+    data: publicPaymentMetadata(method),
   });
 
   logger.info("Added user payment method", { userId: req.user.id });
@@ -545,6 +570,8 @@ export const addUserPaymentMethod = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const updateUserPaymentMethod = asyncHandler(async (req, res, next) => {
+  validatePaymentMetadata(req.body);
+  const supabase = getSupabaseClient(req);
   const methodId = req.params.id;
 
   if (!methodId || !/^[0-9a-fA-F-]{36}$/.test(methodId)) {
@@ -596,7 +623,7 @@ export const updateUserPaymentMethod = asyncHandler(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    data: updated,
+    data: publicPaymentMetadata(updated),
   });
 
   logger.info("Updated user payment method", {
@@ -611,17 +638,18 @@ export const updateUserPaymentMethod = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const setDefaultPaymentMethod = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const methodId = req.params.id;
 
   if (!methodId || !/^[0-9a-fA-F-]{36}$/.test(methodId)) {
     return next(new AppError("Invalid payment method ID", 400));
   }
 
-  const method = await setUserDefaultPaymentMethod(req.user.id, methodId);
+  const method = await setUserDefaultPaymentMethod(req.user.id, methodId, supabase);
 
   res.status(200).json({
     success: true,
-    data: method,
+    data: publicPaymentMetadata(method),
   });
 
   logger.info("Set default payment method", {
@@ -636,6 +664,7 @@ export const setDefaultPaymentMethod = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const deleteUserPaymentMethod = asyncHandler(async (req, res, next) => {
+  const supabase = getSupabaseClient(req);
   const methodId = req.params.id;
 
   if (!methodId || !/^[0-9a-fA-F-]{36}$/.test(methodId)) {

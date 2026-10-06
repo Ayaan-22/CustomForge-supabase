@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { useAddReview } from "@/hooks/use-reviews";
+import type {Review} from "@/lib/types";
+import { useAddReview, useUpdateReview } from "@/hooks/use-reviews";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -13,21 +14,25 @@ import { useRouter } from "next/navigation";
 
 type ReviewFormProps = {
   productId: string;
+  review?: Review;
   onSuccess?: () => void;
 };
 
-export function ReviewForm({ productId, onSuccess }: ReviewFormProps) {
+export function ReviewForm({ productId, review, onSuccess }: ReviewFormProps) {
   const router = useRouter();
   const { isAuthenticated, isEmailVerified } = useAuth();
   const addReview = useAddReview(productId);
+  const updateReview = useUpdateReview(productId);
+  const pending = addReview.isPending || updateReview.isPending;
 
-  const [rating, setRating] = useState(0);
+  const [rating, setRating] = useState(review?.rating ?? 0);
   const [hoverRating, setHoverRating] = useState(0);
-  const [title, setTitle] = useState("");
-  const [comment, setComment] = useState("");
+  const [title, setTitle] = useState(review?.title ?? "");
+  const [comment, setComment] = useState(review?.comment ?? "");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (pending) return;
 
     // Check authentication
     if (!isAuthenticated) {
@@ -55,16 +60,13 @@ export function ReviewForm({ productId, onSuccess }: ReviewFormProps) {
     }
 
     try {
-      const response = await addReview.mutateAsync({
-        rating,
-        comment: comment.trim(),
-        title: title.trim() || undefined,
-      });
+      const payload = {rating,comment:comment.trim(),title:title.trim()};
+      const response = review ? await updateReview.mutateAsync({reviewId:review.id,payload}) : await addReview.mutateAsync(payload);
 
       if (response.error) {
         toast.error(response.error.message || "Failed to submit review");
       } else {
-        toast.success("Review submitted successfully!");
+        toast.success("Review submitted for moderation. It will appear after approval.");
         // Reset form
         setRating(0);
         setTitle("");
@@ -72,7 +74,7 @@ export function ReviewForm({ productId, onSuccess }: ReviewFormProps) {
         onSuccess?.();
       }
     } catch (error) {
-      toast.error("An error occurred. Please try again.");
+      toast.error(error instanceof Error ? error.message : "Unable to submit your review. Please retry.");
     }
   };
 
@@ -85,10 +87,12 @@ export function ReviewForm({ productId, onSuccess }: ReviewFormProps) {
             <button
               key={star}
               type="button"
+              aria-label={`Rate ${star} out of 5`}
+              aria-pressed={rating === star}
               onClick={() => setRating(star)}
               onMouseEnter={() => setHoverRating(star)}
               onMouseLeave={() => setHoverRating(0)}
-              className="transition-transform hover:scale-110"
+              className="min-h-11 min-w-11 transition-transform hover:scale-110"
             >
               <Star
                 className={`h-8 w-8 ${
@@ -103,9 +107,11 @@ export function ReviewForm({ productId, onSuccess }: ReviewFormProps) {
       </div>
 
       <div>
-        <Label htmlFor="review-title">Title (optional)</Label>
+        <Label htmlFor="review-title">Title *</Label>
         <Input
           id="review-title"
+          minLength={5}
+          required
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Sum up your experience"
@@ -122,6 +128,7 @@ export function ReviewForm({ productId, onSuccess }: ReviewFormProps) {
           placeholder="Share your thoughts about this product..."
           rows={4}
           maxLength={1000}
+          minLength={10}
           required
         />
         <p className="text-xs text-muted-foreground mt-1">
@@ -129,8 +136,8 @@ export function ReviewForm({ productId, onSuccess }: ReviewFormProps) {
         </p>
       </div>
 
-      <Button type="submit" disabled={addReview.isPending}>
-        {addReview.isPending ? "Submitting..." : "Submit Review"}
+      <Button type="submit" disabled={pending}>
+        {pending ? "Submitting..." : review ? "Save review" : "Submit Review"}
       </Button>
     </form>
   );

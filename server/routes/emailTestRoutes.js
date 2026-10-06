@@ -1,9 +1,16 @@
 // File: server/routes/emailTestRoutes.js
+// Mount: /api/v1/email — DEV ONLY via shouldMountDevRoutes(). Never production/staging.
 import express from "express";
-import Email from "../utils/email.js"; // Ensure correct path
+import Email from "../utils/email.js";
 import asyncHandler from "express-async-handler";
+import { rejectInProduction } from "../middleware/devOnly.js";
+import { protect, verifiedEmail, restrictTo, twoFactorAuth } from "../middleware/authMiddleware.js";
+import { sensitiveAuthLimiter } from "../config/rateLimit.js";
+import { authActionUrl } from "../utils/authActionUrl.js";
 
 const router = express.Router();
+router.use(rejectInProduction);
+router.use(sensitiveAuthLimiter, protect, restrictTo("admin"), verifiedEmail, twoFactorAuth);
 
 //  Send Welcome Email
 router.post(
@@ -18,7 +25,7 @@ router.post(
     }
 
     const user = { email, name };
-    const url = `${process.env.CLIENT_URL}/welcome`;
+    const url = new URL('/products', process.env.CLIENT_URL).href;
 
     await new Email(user, url).sendWelcome();
 
@@ -44,7 +51,7 @@ router.post(
     }
 
     const user = { email, name };
-    const url = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
+    const url = authActionUrl('reset-password', resetToken);
 
     await new Email(user, url).sendPasswordReset();
 
@@ -63,7 +70,9 @@ router.post(
   asyncHandler(async (req, res) => {
     const { email, name, order } = req.body;
 
-    if (!email || !name || !order || !order._id || !order.totalPrice) {
+    const orderId = order?.id ?? order?._id;
+    const total = order?.total_price ?? order?.totalPrice ?? order?.total;
+    if (!email || !name || !orderId || total == null) {
       return res
         .status(400)
         .json({
@@ -73,9 +82,9 @@ router.post(
     }
 
     const user = { email, name };
-    const url = `${process.env.CLIENT_URL}/orders/${order._id}`;
+    const url = new URL(`/orders/${encodeURIComponent(orderId)}`, process.env.CLIENT_URL).href;
 
-    await new Email(user, url, { order }).sendOrderConfirmation(order);
+    await new Email(user, url).sendOrderConfirmation(order);
 
     res
       .status(200)
@@ -102,7 +111,7 @@ router.post(
     }
 
     const user = { email, name };
-    const url = `${process.env.CLIENT_URL}/verify-email/${verificationToken}`;
+    const url = authActionUrl('verify-email', verificationToken);
 
     await new Email(user, url).sendVerificationEmail();
 

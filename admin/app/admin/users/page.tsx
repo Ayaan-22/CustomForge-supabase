@@ -1,9 +1,23 @@
 "use client";
+import "../forge-operations.css";
+import {useUrlState} from "@/hooks/use-url-state";
+import type {AdminUserRow} from "@/types/admin";
+import {useAdminMutation} from "@/hooks/use-admin-mutation";
+import { useConfirmation } from "@/hooks/use-confirmation";
 
-import { useState, useEffect } from "react";
+import {useAdminQuery} from '@/hooks/use-admin-query';
+import {useDebouncedValue} from '@/hooks/use-debounced-value';
+import {QueryError} from '@/components/patterns/query-error';
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SectionHeader } from "@/components/patterns/section-header";
+import { PageShell } from "@/components/patterns/page-shell";
+import { ActionBar } from "@/components/patterns/action-bar";
+import { Pagination } from "@/components/patterns/pagination";
+import { EmptyState } from "@/components/patterns/empty-state";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Plus,
   Edit2,
@@ -16,9 +30,11 @@ import {
   Eye,
   MapPin,
   CreditCard,
-  ChevronLeft,
-  ChevronRight,
   ArrowUpDown,
+  Search,
+  Users,
+  UserPlus,
+  TrendingUp,
 } from "lucide-react";
 import {
   LineChart,
@@ -35,22 +51,20 @@ import { UserAddressesModal } from "../components/user-addresses-modal";
 import { UserPaymentMethodsModal } from "../components/user-payment-methods-modal";
 import { apiClient } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
+import { INSIGHTS_COLORS, InsightsDataTable, InsightsTooltip, insightsShortDate } from "../components/dashboard-charts";
 
 export default function UsersPage() {
   const { toast } = useToast();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [activeFilter, setActiveFilter] = useState("all");
-  const [sortBy, setSortBy] = useState("created_at");
-  const [sortOrder, setSortOrder] = useState("desc");
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
+  const runMutation = useAdminMutation();
+  const { confirm, confirmationDialog } = useConfirmation();
+  const [searchTerm, setSearchTerm] = useUrlState("searchTerm", "");
+  const [roleFilter, setRoleFilter] = useUrlState("roleFilter", "all");
+  const [activeFilter, setActiveFilter] = useUrlState("activeFilter", "all");
+  const [sortBy, setSortBy] = useUrlState("sortBy", "created_at");
+  const [sortOrder, setSortOrder] = useUrlState("sortOrder", "desc");
+  const [page, setPage] = useUrlState("page", 1);
+  const [limit] = useUrlState("limit", 10);
 
-  const [users, setUsers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalUsers, setTotalUsers] = useState(0);
-  const [userStats, setUserStats] = useState<any>(null);
 
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -59,61 +73,26 @@ export default function UsersPage() {
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [editingUser, setEditingUser] = useState<any>(null);
 
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      const query: any = {
-        page,
-        limit,
-        sortBy,
-        sortOrder,
-      };
+  const search = useDebouncedValue(searchTerm);
+  const filters = {page, limit, search: search, role: roleFilter === 'all' ? undefined : roleFilter, isActive: activeFilter === 'all' ? undefined : String(activeFilter === 'active'), sortBy, sortOrder};
+  const listQuery = useAdminQuery(['users', filters], () => apiClient.getUsers(filters));
+  const statsQuery = useAdminQuery(['analytics', 'users'], () => apiClient.getUserAnalytics("30d"));
+  const users: AdminUserRow[] = listQuery.data?.data ?? [];
+  const totalPages = listQuery.data?.pages ?? 1;
+  const totalUsers = listQuery.data?.count ?? 0;
+  const userStats = statsQuery.data;
+  const newAccountCount = (userStats?.userGrowth || []).reduce((total, bucket) => total + bucket.count, 0);
+  const loading = listQuery.isLoading;
+  const fetchUsers = () => { void listQuery.refetch(); void statsQuery.refetch(); };
 
-      if (searchTerm) query.search = searchTerm;
-      if (roleFilter !== "all") query.role = roleFilter;
-      if (activeFilter !== "all")
-        query.isActive = activeFilter === "active" ? "true" : "false";
-
-      const [usersData, statsData] = await Promise.all([
-        apiClient.getUsers(query),
-        apiClient.getUserAnalytics("30d"), // Fetch stats for the charts/cards
-      ]);
-
-      setUsers(usersData.data);
-      setTotalPages(usersData.pages);
-      setTotalUsers(usersData.count);
-      setUserStats(statsData);
-    } catch (error) {
-      console.error("Failed to fetch users:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch users",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchUsers();
-  }, [page, limit, sortBy, sortOrder, roleFilter, activeFilter]);
-
-  // Debounce search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchUsers();
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
 
   const handleUserSubmit = async (userData: any) => {
     try {
       if (editingUser) {
-        await apiClient.updateUser(editingUser.id, userData);
+        await runMutation(() => apiClient.updateUser(editingUser.id, userData));
         toast({ title: "Success", description: "User updated successfully" });
       } else {
-        await apiClient.createUser(userData);
+        await runMutation(() => apiClient.createUser(userData));
         toast({ title: "Success", description: "User created successfully" });
       }
       setIsUserModalOpen(false);
@@ -129,9 +108,9 @@ export default function UsersPage() {
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (confirm("Are you sure you want to delete this user?")) {
+    if (await confirm({ title: "Delete user?", description: "Are you sure you want to delete this user?", confirmLabel: "Delete user" })) {
       try {
-        await apiClient.deleteUser(Number(userId)); // Assuming ID is number for delete based on api-client
+        await runMutation(() => apiClient.deleteUser(userId)); // Assuming ID is number for delete based on api-client
         toast({ title: "Success", description: "User deleted successfully" });
         fetchUsers();
       } catch (error: any) {
@@ -175,113 +154,65 @@ export default function UsersPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Users</h1>
-          <p className="text-[#A0A0A8] mt-1">
-            Manage user accounts and permissions
-          </p>
+    <PageShell className="fo-page">
+      <SectionHeader eyebrow="People & access" title="Users & access" description="Manage customer accounts, permissions and account protection in one place." icon={<Users />} actions={<Button onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }}><Plus className="w-4 h-4" /> Add user</Button>} />
+      <QueryError error={listQuery.error || statsQuery.error} retry={fetchUsers} />
+      {userStats && (
+        <div className="fo-stats" aria-label="User analytics">
+          {[{label: "Total users", value: userStats.totalUsers, note: "Registered accounts", icon: Users}, {label: "Active accounts", value: userStats.activeUsers, note: "Accounts with active access", icon: Shield}, {label: "New users", value: userStats.newUsers, note: "Over the last 30 days", icon: UserPlus}, {label: "Growth", value: userStats.growth == null ? "Unavailable" : `${userStats.growth}%`, note: "Compared with previous period", icon: TrendingUp}].map(({label, value, note, icon: Icon}) => <div className="fo-stat" key={label}><div className="fo-stat-head"><p className="fo-stat-label">{label}</p><Icon className="fo-stat-icon" aria-hidden="true" /></div><p className={`fo-stat-value ${value === "Unavailable" ? "fo-value-unavailable" : ""}`}>{value}</p><p className="fo-stat-note">{note}</p></div>)}
         </div>
-        <Button
-          onClick={() => {
-            setEditingUser(null);
-            setIsUserModalOpen(true);
-          }}
-          className="bg-gradient-to-r from-[#7C3AED] to-[#3B82F6] hover:shadow-lg hover:shadow-purple-500/20"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Add User
-        </Button>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-4">
-        <Input
-          placeholder="Search by name, email, or phone..."
-          value={searchTerm}
-          onChange={(e) => {
-            setSearchTerm(e.target.value);
-            setPage(1);
-          }}
-          className="bg-[#1F1F28] border-[#2A2A35] text-white placeholder:text-[#A0A0A8]"
-        />
-
-        <select
-          value={roleFilter}
-          onChange={(e) => {
-            setRoleFilter(e.target.value);
-            setPage(1);
-          }}
-          className="px-4 py-2 bg-[#1F1F28] border border-[#2A2A35] text-white rounded-lg"
-        >
-          <option value="all">All Roles</option>
-          <option value="user">User</option>
-          <option value="publisher">Publisher</option>
-          <option value="admin">Admin</option>
-        </select>
-
-        <select
-          value={activeFilter}
-          onChange={(e) => {
-            setActiveFilter(e.target.value);
-            setPage(1);
-          }}
-          className="px-4 py-2 bg-[#1F1F28] border border-[#2A2A35] text-white rounded-lg"
-        >
-          <option value="all">All Status</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-        </select>
-      </div>
-
+      )}
+      <ActionBar className="fo-toolbar" layout="filters">
+        <div className="fo-field"><label htmlFor="users-search">Find an account</label><div className="fo-search"><Search aria-hidden="true" /><Input id="users-search" placeholder="Search name, email or phone…" value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }} /></div></div>
+        <div className="fo-field"><label htmlFor="users-role">Access level</label><Select value={roleFilter} onValueChange={(value) => { setRoleFilter(value); setPage(1); }}><SelectTrigger id="users-role"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All roles</SelectItem><SelectItem value="user">User</SelectItem><SelectItem value="publisher">Publisher</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent></Select></div>
+        <div className="fo-field"><label htmlFor="users-status">Account status</label><Select value={activeFilter} onValueChange={(value) => { setActiveFilter(value); setPage(1); }}><SelectTrigger id="users-status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent></Select></div>
+      </ActionBar>
       {/* Users Table */}
-      <Card className="glass-dark p-6 border-[#2A2A35] overflow-x-auto">
+      <Card className="fa-panel fa-results-panel">
+        <div className="fa-panel-heading"><div><h2>Account directory</h2><p>Review identity, verification and access.</p></div><span className="fo-count">{totalUsers} accounts</span></div>
         {loading ? (
-          <div className="flex justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500"></div>
-          </div>
+          <div className="fo-loading" role="status" aria-label="Loading users"><span className="fo-loading-label">Loading account directory…</span>{[0,1,2].map((row) => <div key={row} className="fo-loading-bar" />)}</div>
         ) : (
           <>
-            <table className="w-full text-sm">
+            <div className="fa-table-scroll" role="region" aria-label="User accounts" tabIndex={0}><table className="fa-data-table fo-table" aria-label="User accounts">
               <thead>
-                <tr className="border-b border-[#2A2A35]">
+                <tr className="border-b border-border">
                   <th
-                    className="text-left py-3 px-4 text-[#A0A0A8] font-medium cursor-pointer hover:text-white"
-                    onClick={() => toggleSort("name")}
+                    className="text-left py-3 px-4 text-muted-foreground font-medium cursor-pointer hover:text-foreground"
+                    aria-sort={sortBy === "name" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}
                   >
-                    <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => toggleSort("name")}>
                       User
                       {sortBy === "name" && <ArrowUpDown className="w-4 h-4" />}
-                    </div>
+                    </button>
                   </th>
                   <th
-                    className="text-left py-3 px-4 text-[#A0A0A8] font-medium cursor-pointer hover:text-white"
-                    onClick={() => toggleSort("email")}
+                    className="text-left py-3 px-4 text-muted-foreground font-medium cursor-pointer hover:text-foreground"
+                    aria-sort={sortBy === "email" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}
                   >
-                    <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => toggleSort("email")}>
                       Email
                       {sortBy === "email" && (
                         <ArrowUpDown className="w-4 h-4" />
                       )}
-                    </div>
+                    </button>
                   </th>
-                  <th className="text-left py-3 px-4 text-[#A0A0A8] font-medium">
+                  <th className="text-left py-3 px-4 text-muted-foreground font-medium">
                     Role
                   </th>
-                  <th className="text-left py-3 px-4 text-[#A0A0A8] font-medium">
+                  <th className="text-left py-3 px-4 text-muted-foreground font-medium">
                     Email Verified
                   </th>
-                  <th className="text-left py-3 px-4 text-[#A0A0A8] font-medium">
+                  <th className="text-left py-3 px-4 text-muted-foreground font-medium">
                     2FA
                   </th>
-                  <th className="text-left py-3 px-4 text-[#A0A0A8] font-medium">
+                  <th className="text-left py-3 px-4 text-muted-foreground font-medium">
                     Status
                   </th>
-                  <th className="text-left py-3 px-4 text-[#A0A0A8] font-medium">
+                  <th className="text-left py-3 px-4 text-muted-foreground font-medium">
                     Related Data
                   </th>
-                  <th className="text-left py-3 px-4 text-[#A0A0A8] font-medium">
+                  <th className="text-left py-3 px-4 text-muted-foreground font-medium">
                     Actions
                   </th>
                 </tr>
@@ -290,10 +221,10 @@ export default function UsersPage() {
                 {users.map((user) => (
                   <tr
                     key={user.id}
-                    className="border-b border-[#2A2A35] hover:bg-[#1F1F28] transition-colors"
+                    className="border-b border-border hover:bg-card transition-colors"
                   >
                     <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
+                      <div className="fo-person">
                         <img
                           src={
                             user.avatar || "/placeholder.svg?height=32&width=32"
@@ -302,29 +233,29 @@ export default function UsersPage() {
                           className="w-8 h-8 rounded-full object-cover"
                         />
                         <div>
-                          <span className="text-white font-medium">
+                          <span className="fo-person-name">
                             {user.name}
                           </span>
-                          <p className="text-xs text-[#A0A0A8]">{user.phone}</p>
+                          <p className="fo-person-secondary">{user.phone}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="py-3 px-4 text-[#A0A0A8]">{user.email}</td>
+                    <td className="py-3 px-4 text-muted-foreground">{user.email}</td>
                     <td className="py-3 px-4">
-                      <span className="flex items-center gap-1 text-white">
+                      <span className="flex items-center gap-1 text-foreground">
                         {user.role === "admin" ? (
                           <>
-                            <Shield className="w-4 h-4 text-purple-400" />
+                            <Shield className="w-4 h-4 text-[var(--fa-violet)]" />
                             Admin
                           </>
                         ) : user.role === "publisher" ? (
                           <>
-                            <User className="w-4 h-4 text-blue-400" />
+                            <User className="w-4 h-4 text-primary" />
                             Publisher
                           </>
                         ) : (
                           <>
-                            <User className="w-4 h-4 text-gray-400" />
+                            <User className="w-4 h-4 text-muted-foreground" />
                             User
                           </>
                         )}
@@ -332,12 +263,12 @@ export default function UsersPage() {
                     </td>
                     <td className="py-3 px-4">
                       {user.is_email_verified ? (
-                        <span className="flex items-center gap-1 text-green-400">
+                        <span className="flex items-center gap-1 text-[var(--fa-success)]">
                           <CheckCircle className="w-4 h-4" />
                           Verified
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1 text-yellow-400">
+                        <span className="flex items-center gap-1 text-[var(--fa-warning)]">
                           <Mail className="w-4 h-4" />
                           Pending
                         </span>
@@ -345,170 +276,114 @@ export default function UsersPage() {
                     </td>
                     <td className="py-3 px-4">
                       {user.two_factor_enabled ? (
-                        <span className="flex items-center gap-1 text-green-400">
+                        <span className="flex items-center gap-1 text-[var(--fa-success)]">
                           <Lock className="w-4 h-4" />
                           Enabled
                         </span>
                       ) : (
-                        <span className="text-[#A0A0A8]">Disabled</span>
+                        <span className="text-muted-foreground">Disabled</span>
                       )}
                     </td>
                     <td className="py-3 px-4">
                       <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          user.active
-                            ? "bg-green-500/20 text-green-400"
-                            : "bg-red-500/20 text-red-400"
-                        }`}
+                        className={`fa-status ${user.active ? "is-success" : "is-danger"}`}
                       >
                         {user.active ? "Active" : "Inactive"}
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      <div className="flex gap-2">
-                        <button
+                      <div className="fo-actions">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          aria-label={`View addresses for ${user.name}`}
                           onClick={() => handleViewAddresses(user)}
                           title="View Addresses"
-                          className="p-1 hover:bg-blue-500/20 rounded transition-colors"
+                          className="size-11"
                         >
-                          <MapPin className="w-4 h-4 text-blue-400" />
-                        </button>
-                        <button
+                          <MapPin className="w-4 h-4 text-primary" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          aria-label={`View payment methods for ${user.name}`}
                           onClick={() => handleViewPaymentMethods(user)}
                           title="View Payment Methods"
-                          className="p-1 hover:bg-green-500/20 rounded transition-colors"
+                          className="size-11"
                         >
-                          <CreditCard className="w-4 h-4 text-green-400" />
-                        </button>
+                          <CreditCard className="w-4 h-4 text-[var(--fa-success)]" />
+                        </Button>
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <div className="flex gap-2">
-                        <button
+                      <div className="fo-actions">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          aria-label={`View account for ${user.name}`}
                           onClick={() => handleViewUser(user)}
-                          className="p-1 hover:bg-blue-500/20 rounded transition-colors"
+                          className="size-11"
                         >
-                          <Eye className="w-4 h-4 text-blue-400" />
-                        </button>
-                        <button
+                          <Eye className="w-4 h-4 text-primary" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          aria-label={`Edit account for ${user.name}`}
                           onClick={() => handleEditUser(user)}
-                          className="p-1 hover:bg-[#2A2A35] rounded transition-colors"
+                          className="size-11"
                         >
-                          <Edit2 className="w-4 h-4 text-[#A0A0A8]" />
-                        </button>
-                        <button
+                          <Edit2 className="w-4 h-4 text-muted-foreground" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          aria-label={`Delete account for ${user.name}`}
                           onClick={() => handleDeleteUser(user.id)}
-                          className="p-1 hover:bg-red-500/20 rounded transition-colors"
+                          className="size-11 fo-danger"
                         >
-                          <Trash2 className="w-4 h-4 text-red-400" />
-                        </button>
+                          <Trash2 className="w-4 h-4 text-[var(--fa-danger)]" />
+                        </Button>
                       </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
+            {users.length === 0 && <EmptyState className="m-5" icon={<Users />} title="No accounts match" description="Try another search or change the account filters." />}
 
-            {/* Pagination */}
-            <div className="flex items-center justify-between mt-6">
-              <div className="text-sm text-[#A0A0A8]">
-                Showing {users.length === 0 ? 0 : (page - 1) * limit + 1} to{" "}
-                {Math.min(page * limit, totalUsers)} of {totalUsers} users
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => setPage(Math.max(1, page - 1))}
-                  disabled={page === 1}
-                  variant="outline"
-                  size="sm"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  const pageNum = Math.max(1, page - 2) + i;
-                  if (pageNum > totalPages) return null;
-                  return (
-                    <Button
-                      key={pageNum}
-                      onClick={() => setPage(pageNum)}
-                      variant={page === pageNum ? "default" : "outline"}
-                      size="sm"
-                    >
-                      {pageNum}
-                    </Button>
-                  );
-                })}
-                <Button
-                  onClick={() => setPage(Math.min(totalPages, page + 1))}
-                  disabled={page === totalPages}
-                  variant="outline"
-                  size="sm"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
+            {totalUsers > 0 && <Pagination page={page} pages={totalPages} pending={listQuery.isFetching} onPage={setPage} total={totalUsers} pageSize={limit} noun="users" />}
           </>
         )}
       </Card>
 
-      {/* New Users Chart */}
-      {userStats && (
-        <Card className="glass-dark p-6 border-[#2A2A35]">
-          <h3 className="text-white font-semibold mb-4">New Users per Day</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={userStats.userGrowth || []}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2A2A35" />
-              <XAxis dataKey="date" stroke="#A0A0A8" />
-              <YAxis stroke="#A0A0A8" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#1F1F28",
-                  border: "1px solid #2A2A35",
-                  borderRadius: "8px",
-                }}
-                labelStyle={{ color: "#F5F5F7" }}
-              />
-              <Line
-                type="monotone"
-                dataKey="count"
-                stroke="#7C3AED"
-                strokeWidth={2}
-                dot={{ fill: "#7C3AED" }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+      {/* Only render the series if the backend supplies it. */}
+      {userStats && userStats.userGrowth.length > 0 && (
+        <Card className="fa-panel fo-growth-panel">
+          <div className="fa-panel-heading fo-growth-heading">
+            <div><p className="fa-kicker">Community movement</p><h2>New account activity</h2><p>Daily registrations over the last 30 days · account count</p></div>
+            <span className="fo-count">Last 30 days</span>
+          </div>
+          <p className="fo-growth-summary">{newAccountCount.toLocaleString()} new accounts across {userStats.userGrowth.length} recorded days. Days without registrations have no chart bucket.</p>
+          <div className="fo-growth-chart" role="img" aria-label={`${newAccountCount.toLocaleString()} new accounts registered over the last 30 days, across ${userStats.userGrowth.length} recorded days. Exact daily counts are available in the chart data table.`}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={userStats.userGrowth} margin={{ left: -20, right: 12, top: 12, bottom: 4 }} accessibilityLayer>
+                <CartesianGrid vertical={false} strokeDasharray="3 5" stroke={INSIGHTS_COLORS.grid} />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tickMargin={12} minTickGap={24} tickFormatter={insightsShortDate} />
+                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tickMargin={10} />
+                <Tooltip content={<InsightsTooltip />} cursor={{ stroke: "color-mix(in srgb, var(--primary) 32%, transparent)", strokeDasharray: "4 4" }} />
+                <Line type="monotone" dataKey="count" name="New accounts" stroke={INSIGHTS_COLORS.cyan} strokeWidth={2.5} dot={false} activeDot={{ r: 4, fill: INSIGHTS_COLORS.cyan, stroke: "var(--card)", strokeWidth: 2 }} isAnimationActive={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="fo-growth-legend"><i aria-hidden="true" />New accounts · count</div>
+          <InsightsDataTable title="Daily account registrations in the last 30 days" rows={userStats.userGrowth} columns={[{ key: "date", label: "Date (UTC)" }, { key: "count", label: "New accounts" }]} />
         </Card>
-      )}
-
-      {/* User Stats */}
-      {userStats && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="glass-dark p-6 border-[#2A2A35]">
-            <p className="text-[#A0A0A8] text-sm font-medium">Total Users</p>
-            <p className="text-2xl font-bold text-white mt-2">
-              {userStats.totalUsers}
-            </p>
-          </Card>
-          <Card className="glass-dark p-6 border-[#2A2A35]">
-            <p className="text-[#A0A0A8] text-sm font-medium">Active Users</p>
-            <p className="text-2xl font-bold text-green-400 mt-2">
-              {userStats.activeUsers}
-            </p>
-          </Card>
-          <Card className="glass-dark p-6 border-[#2A2A35]">
-            <p className="text-[#A0A0A8] text-sm font-medium">New Users</p>
-            <p className="text-2xl font-bold text-blue-400 mt-2">
-              {userStats.newUsers}
-            </p>
-          </Card>
-          <Card className="glass-dark p-6 border-[#2A2A35]">
-            <p className="text-[#A0A0A8] text-sm font-medium">Growth</p>
-            <p className="text-2xl font-bold text-purple-400 mt-2">
-              {userStats.growth}%
-            </p>
-          </Card>
-        </div>
       )}
 
       <UserModal
@@ -535,6 +410,7 @@ export default function UsersPage() {
         onClose={() => setIsPaymentMethodsOpen(false)}
         user={selectedUser}
       />
-    </div>
+      {confirmationDialog}
+    </PageShell>
   );
 }

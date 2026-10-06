@@ -1,18 +1,20 @@
 "use client"
+import "../forge-operations.css";
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useState, useEffect, useRef } from "react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 
 interface User {
   id: string
   name: string
   email: string
   password?: string
-  role: "user" | "publisher" | "admin"
+  role: "user" | "admin"
   avatar: string
   isEmailVerified: boolean
   twoFactorEnabled: boolean
@@ -24,11 +26,12 @@ interface User {
 interface UserModalProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (user: Partial<User>) => void
+  onSubmit: (user: Partial<User>) => Promise<void>
   initialData?: User
 }
 
 export function UserModal({ isOpen, onClose, onSubmit, initialData }: UserModalProps) {
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   const [formData, setFormData] = useState<Partial<User>>({
     name: "",
     email: "",
@@ -40,6 +43,7 @@ export function UserModal({ isOpen, onClose, onSubmit, initialData }: UserModalP
     active: true,
   })
 
+  const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const isEditing = !!initialData
 
@@ -96,134 +100,121 @@ export function UserModal({ isOpen, onClose, onSubmit, initialData }: UserModalP
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (validateForm()) {
-      onSubmit(formData)
-      onClose()
+    if (!saving && validateForm()) {
+      setSaving(true)
+      const {name, email, password, role, active} = formData
+      try { await onSubmit({name, email, role, ...(isEditing ? {active} : {password})}) } finally { setSaving(false) }
     }
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#1F1F28] border-[#2A2A35] max-w-md">
+      <DialogContent className="fo-modal fo-user-editor"
+        onOpenAutoFocus={() => { returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }}
+        onCloseAutoFocus={(event) => { event.preventDefault(); returnFocusRef.current?.focus(); }}
+      >
         <DialogHeader>
-          <DialogTitle className="text-white">{isEditing ? "Edit User" : "Add New User"}</DialogTitle>
+          <DialogTitle className="text-foreground">{isEditing ? "Edit User" : "Add New User"}</DialogTitle>
+          <DialogDescription>{isEditing ? "Update identity, access and account status." : "Create an account and choose its access level."}</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-[#A0A0A8] mb-2">
-              Name <span className="text-red-400">*</span>
+            <label htmlFor="user-editor-name" className="block text-sm font-medium text-muted-foreground mb-2">
+              Name <span className="text-[var(--fa-danger)]">*</span>
             </label>
             <Input
+              id="user-editor-name"
+              aria-invalid={Boolean(errors.name)}
+              aria-describedby={errors.name ? "user-editor-name-error" : undefined}
+              aria-label="Name"
               value={formData.name || ""}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="Enter user name"
-              className="bg-[#2A2A35] border-[#3A3A45] text-white placeholder:text-[#6A6A78]"
+              className="bg-muted border-input text-foreground placeholder:text-muted-foreground"
             />
-            {errors.name && <p className="text-red-400 text-xs mt-1">{errors.name}</p>}
+            {errors.name && <p id="user-editor-name-error" role="alert" className="text-[var(--fa-danger)] text-xs mt-1">{errors.name}</p>}
           </div>
 
           {/* Email */}
           <div>
-            <label className="block text-sm font-medium text-[#A0A0A8] mb-2">
-              Email <span className="text-red-400">*</span>
+            <label htmlFor="user-editor-email" className="block text-sm font-medium text-muted-foreground mb-2">
+              Email <span className="text-[var(--fa-danger)]">*</span>
             </label>
             <Input
               type="email"
+              id="user-editor-email"
+              aria-invalid={Boolean(errors.email)}
+              aria-describedby={errors.email ? "user-editor-email-error" : undefined}
+              aria-label="Email"
               value={formData.email || ""}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               placeholder="Enter email address"
-              className="bg-[#2A2A35] border-[#3A3A45] text-white placeholder:text-[#6A6A78]"
+              className="bg-muted border-input text-foreground placeholder:text-muted-foreground"
             />
-            {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email}</p>}
+            {errors.email && <p id="user-editor-email-error" role="alert" className="text-[var(--fa-danger)] text-xs mt-1">{errors.email}</p>}
           </div>
 
           {/* Password - Only for new users */}
           {!isEditing && (
             <div>
-              <label className="block text-sm font-medium text-[#A0A0A8] mb-2">
-                Password <span className="text-red-400">*</span>
+              <label htmlFor="user-editor-password" className="block text-sm font-medium text-muted-foreground mb-2">
+                Password <span className="text-[var(--fa-danger)]">*</span>
               </label>
               <Input
                 type="password"
+                id="user-editor-password"
+                aria-invalid={Boolean(errors.password)}
+                aria-describedby={errors.password ? "user-editor-password-error" : undefined}
+                autoComplete="new-password"
+                aria-label="Password"
                 value={formData.password || ""}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 placeholder="Enter password (min 8 characters)"
-                className="bg-[#2A2A35] border-[#3A3A45] text-white placeholder:text-[#6A6A78]"
+                className="bg-muted border-input text-foreground placeholder:text-muted-foreground"
               />
-              {errors.password && <p className="text-red-400 text-xs mt-1">{errors.password}</p>}
+              {errors.password && <p id="user-editor-password-error" role="alert" className="text-[var(--fa-danger)] text-xs mt-1">{errors.password}</p>}
             </div>
           )}
 
           {/* Role */}
           <div>
-            <label className="block text-sm font-medium text-[#A0A0A8] mb-2">Role</label>
-            <select
-              value={formData.role || "user"}
-              onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
-              className="w-full px-3 py-2 bg-[#2A2A35] border border-[#3A3A45] text-white rounded-lg"
-            >
-              <option value="user">User</option>
-              <option value="publisher">Publisher</option>
-              <option value="admin">Admin</option>
-            </select>
+            <label htmlFor="user-editor-role" className="block text-sm font-medium text-muted-foreground mb-2">Role</label>
+            <Select value={formData.role || "user"} onValueChange={(role) => setFormData({ ...formData, role: role as User["role"] })}>
+              <SelectTrigger id="user-editor-role" aria-label="Role" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="user">User</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent>
+            </Select>
           </div>
 
-          {/* Email Verified */}
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="emailVerified"
-              checked={formData.isEmailVerified || false}
-              onChange={(e) => setFormData({ ...formData, isEmailVerified: e.target.checked })}
-              className="w-4 h-4 rounded bg-[#2A2A35] border-[#3A3A45]"
-            />
-            <label htmlFor="emailVerified" className="text-sm text-[#A0A0A8]">
-              Email Verified
-            </label>
-          </div>
-
-          {/* 2FA Enabled */}
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="twoFactor"
-              checked={formData.twoFactorEnabled || false}
-              onChange={(e) => setFormData({ ...formData, twoFactorEnabled: e.target.checked })}
-              className="w-4 h-4 rounded bg-[#2A2A35] border-[#3A3A45]"
-            />
-            <label htmlFor="twoFactor" className="text-sm text-[#A0A0A8]">
-              Two-Factor Authentication Enabled
-            </label>
-          </div>
-
+          {/* Verification and 2FA are managed by the account owner. */}
           {/* Active Status */}
-          <div className="flex items-center gap-3">
+          <div className="fo-check-row">
             <input
               type="checkbox"
-              id="active"
+              id="user-editor-active"
               checked={formData.active ?? true}
               onChange={(e) => setFormData({ ...formData, active: e.target.checked })}
-              className="w-4 h-4 rounded bg-[#2A2A35] border-[#3A3A45]"
+              className="w-4 h-4 rounded bg-muted border-input"
             />
-            <label htmlFor="active" className="text-sm text-[#A0A0A8]">
+            <label htmlFor="user-editor-active" className="text-sm text-muted-foreground">
               Active Account
             </label>
           </div>
 
           {/* Buttons */}
-          <div className="flex gap-3 pt-4">
-            <Button type="button" onClick={onClose} className="flex-1 bg-[#2A2A35] hover:bg-[#3A3A45] text-white">
+          <div className="fo-modal-footer">
+            <Button type="button" onClick={onClose} variant="outline">
               Cancel
             </Button>
             <Button
               type="submit"
-              className="flex-1 bg-gradient-to-r from-[#7C3AED] to-[#3B82F6] hover:shadow-lg hover:shadow-purple-500/20"
+              disabled={saving}
+              className="flex-1"
             >
-              {isEditing ? "Update User" : "Create User"}
+              {saving ? "Saving account…" : isEditing ? "Update User" : "Create User"}
             </Button>
           </div>
         </form>

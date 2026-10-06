@@ -4,8 +4,7 @@ import AppError from "./appError.js";
 import crypto from "crypto";
 import speakeasy from "speakeasy";
 import dotenv from "dotenv";
-import { supabase } from "../config/db.js";
-import { updateUser, findUserById } from "../models/User.js";
+import { updateUser } from "../models/User.js";
 
 dotenv.config();
 
@@ -81,10 +80,11 @@ export const hashToken = (token) => {
 export const verifyTokenAndFindUser = async (
   token,
   tokenField,
-  expiresField
+  expiresField,
+  client
 ) => {
+  if (!client) throw new Error("Explicit auth client is required");
   const hashedToken = hashToken(token);
-  const now = new Date().toISOString();
 
   // Map camelCase to snake_case for database fields
   const dbTokenField =
@@ -97,7 +97,7 @@ export const verifyTokenAndFindUser = async (
       : "password_reset_expires";
 
   // First find user by token
-  const { data: user, error } = await supabase
+  const { data: user, error } = await client
     .from("users")
     .select("*")
     .eq(dbTokenField, hashedToken)
@@ -121,11 +121,12 @@ export const verifyTokenAndFindUser = async (
 };
 
 // Specific token verification functions
-export const verifyEmailToken = async (token) => {
+export const verifyEmailToken = async (token, client) => {
   const user = await verifyTokenAndFindUser(
     token,
     "emailVerificationToken",
-    "emailVerificationExpires"
+    "emailVerificationExpires",
+    client
   );
   // Map the user row to camelCase format
   return {
@@ -152,11 +153,12 @@ export const verifyEmailToken = async (token) => {
   };
 };
 
-export const verifyPasswordResetToken = async (token) => {
+export const verifyPasswordResetToken = async (token, client) => {
   const user = await verifyTokenAndFindUser(
     token,
     "passwordResetToken",
-    "passwordResetExpires"
+    "passwordResetExpires",
+    client
   );
   // Map the user row to camelCase format
   return {
@@ -209,24 +211,24 @@ export const generateTokenPair = (userId, role) => {
 };
 
 // User Model Helpers
-export const assignEmailVerificationToUser = async (userId) => {
+export const assignEmailVerificationToUser = async (userId, client) => {
   const { token, hashedToken, expires } = generateEmailVerificationToken();
 
   await updateUser(userId, {
     emailVerificationToken: hashedToken,
     emailVerificationExpires: new Date(expires).toISOString(),
-  });
+  }, client);
 
   return token;
 };
 
-export const assignPasswordResetToUser = async (userId) => {
+export const assignPasswordResetToUser = async (userId, client) => {
   const { token, hashedToken, expires } = generatePasswordResetToken();
 
   await updateUser(userId, {
     passwordResetToken: hashedToken,
     passwordResetExpires: new Date(expires).toISOString(),
-  });
+  }, client);
 
   return token;
 };

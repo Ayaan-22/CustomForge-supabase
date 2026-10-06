@@ -1,335 +1,575 @@
 "use client";
-
+import "../../forge-order-detail.css";
+import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import { OrderService } from "@/services/order-service";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { OrderPaymentAction } from "@/components/order-payment-action";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertCircle,
-  Package,
+  ArrowLeft,
+  ArrowUpRight,
+  FileText,
   MapPin,
-  CreditCard,
-  XCircle,
+  Package,
+  RefreshCw,
   RotateCcw,
-  CheckCircle,
+  ShieldCheck,
+  XCircle,
 } from "lucide-react";
 import { formatPrice } from "@/lib/format";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
-import { useEffect, useState } from "react";
+import { RequestError, requireSuccess } from "@/lib/query-result";
+import {
+  OrderCelebration,
+  OrderTimeline,
+} from "@/components/forge/order-timeline";
+import { Invoice } from "@/components/forge/invoice";
+import {
+  OrderActionDialog,
+  type OrderAction,
+} from "@/components/forge/order-action-dialog";
+import {
+  hasInvoicePricing,
+  orderActionEligibility,
+  recordedLineTotal,
+  recordedOrderAmount,
+  recordedOrderDate,
+} from "@/lib/order-detail";
+
+const amount = (value: unknown) =>
+  recordedOrderAmount(value) ? formatPrice(value) : "Not recorded";
 
 export default function OrderDetailsPage() {
-  const params = useParams();
+  const orderId = useParams().id as string;
   const searchParams = useSearchParams();
-  const orderId = params.id as string;
   const queryClient = useQueryClient();
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
+  const [action, setAction] = useState<OrderAction | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [reviewRequired, setReviewRequired] = useState(false);
+  const submitting = useRef(false);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const actionTrigger = useRef<HTMLButtonElement | null>(null);
 
-  // Check if user arrived from successful order creation
+  // This URL only requests a banner. Its content uses the server's payment record.
   useEffect(() => {
     if (searchParams.get("success") === "true") {
       setShowSuccessBanner(true);
-      // Auto-hide banner after 10 seconds
-      const timer = setTimeout(() => {
-        setShowSuccessBanner(false);
-      }, 10000);
+      const timer = setTimeout(() => setShowSuccessBanner(false), 10000);
       return () => clearTimeout(timer);
     }
   }, [searchParams]);
 
-  const {
-    data: orderResponse,
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: ["order", orderId],
-    queryFn: () => OrderService.get(orderId),
+  const query = useQuery({
+    queryKey: ["orders", orderId],
+    queryFn: () => OrderService.get(orderId).then(requireSuccess),
+    refetchInterval: (state) =>
+      searchParams.get("success") === "true" &&
+      !state.state.data?.data?.isPaid &&
+      state.state.dataUpdateCount < 12
+        ? 5000
+        : false,
   });
+  const order = query.data?.data;
 
-  const order = orderResponse?.data;
-
-  // Cancel order mutation
+  async function actionConfirmed(message: string) {
+    // Acknowledged mutations still refresh the authoritative order record.
+    await queryClient.invalidateQueries({ queryKey: ["orders", orderId] });
+    await queryClient.invalidateQueries({ queryKey: ["orders"] });
+    setAction(null);
+    setActionError(null);
+    setReviewRequired(false);
+    toast.success(message);
+  }
+  function actionFailed(error: Error) {
+    setActionError(error.message);
+    setReviewRequired(true);
+    toast.error(error.message);
+  }
   const cancelOrderMutation = useMutation({
-    mutationFn: () => OrderService.cancel(orderId),
-    onSuccess: (response) => {
-      if (response.error) {
-        toast.error(response.error.message || "Failed to cancel order");
-      } else {
-        queryClient.invalidateQueries({ queryKey: ["order", orderId] });
-        queryClient.invalidateQueries({ queryKey: ["orders"] });
-        toast.success("Order cancelled successfully");
-      }
-    },
+    mutationFn: () => OrderService.cancel(orderId).then(requireSuccess),
+    retry: false,
+    onSuccess: () => actionConfirmed("Order cancelled successfully"),
+    onError: actionFailed,
   });
-
-  // Request return mutation
   const returnOrderMutation = useMutation({
-    mutationFn: () => OrderService.return(orderId),
-    onSuccess: (response) => {
-      if (response.error) {
-        toast.error(response.error.message || "Failed to request return");
-      } else {
-        queryClient.invalidateQueries({ queryKey: ["order", orderId] });
-        queryClient.invalidateQueries({ queryKey: ["orders"] });
-        toast.success("Return request submitted successfully");
-      }
-    },
+    mutationFn: () => OrderService.return(orderId).then(requireSuccess),
+    retry: false,
+    onSuccess: () => actionConfirmed("Return request submitted successfully"),
+    onError: actionFailed,
   });
+  const actionPending =
+    cancelOrderMutation.isPending || returnOrderMutation.isPending;
 
-  const handleCancelOrder = () => {
-    if (!confirm("Are you sure you want to cancel this order?")) {
+  async function confirmAction() {
+    if (
+      !order ||
+      !action ||
+      submitting.current ||
+      actionPending ||
+      query.isFetching ||
+      query.isError ||
+      reviewRequired
+    )
       return;
-    }
-    cancelOrderMutation.mutate();
-  };
-
-  const handleRequestReturn = () => {
-    if (!confirm("Are you sure you want to request a return for this order?")) {
+    const eligibility = orderActionEligibility(order);
+    if (action === "cancel" ? !eligibility.canCancel : !eligibility.canReturn)
       return;
+    submitting.current = true;
+    setActionError(null);
+    try {
+      if (action === "cancel") await cancelOrderMutation.mutateAsync();
+      else await returnOrderMutation.mutateAsync();
+    } catch {
+      // The mutation retains the dialog, reports the error, and requires a status refresh.
+    } finally {
+      submitting.current = false;
     }
-    returnOrderMutation.mutate();
-  };
+  }
+  async function refreshActionStatus() {
+    const refreshed = await query.refetch();
+    if (!refreshed.isError && refreshed.data?.data) setReviewRequired(false);
+  }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "delivered":
-        return "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400";
-      case "shipped":
-        return "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400";
-      case "paid":
-        return "bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400";
-      case "cancelled":
-      case "returned":
-        return "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400";
-      default:
-        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400";
-    }
-  };
-
-  if (isLoading) {
+  if (query.isLoading)
     return (
-      <div className="container mx-auto px-4 py-6">
-        <Skeleton className="h-8 w-48 mb-6" />
-        <div className="space-y-4">
-          <Skeleton className="h-64 w-full" />
-          <Skeleton className="h-32 w-full" />
+      <div className="forge-container forge-order-detail" aria-busy="true">
+        <p className="forge-eyebrow">YOUR UPGRADE JOURNEY</p>
+        <h1>Opening your order.</h1>
+        <p className="forge-order-detail-intro" role="status">
+          Loading the latest order and payment record…
+        </p>
+        <div className="forge-order-detail-loading">
+          <Skeleton className="h-40 rounded-xl" />
+          <Skeleton className="h-40 rounded-xl" />
+          <Skeleton className="h-80 rounded-xl" />
         </div>
       </div>
     );
-  }
-
-  if (error || !order) {
+  if (!order) {
+    const missing =
+      query.error instanceof RequestError && query.error.status === 404;
     return (
-      <div className="container mx-auto px-4 py-6">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Failed to load order details. Please try again later.
-          </AlertDescription>
-        </Alert>
+      <div className="forge-container forge-order-detail">
+        <section className="forge-order-detail-state" role="alert">
+          <span>
+            <AlertCircle size={35} />
+          </span>
+          <p className="forge-eyebrow">
+            {missing ? "ORDER UNAVAILABLE" : "CONNECTION INTERRUPTED"}
+          </p>
+          <h1>
+            {missing
+              ? "We couldn’t find this order."
+              : "Let’s reconnect your order."}
+          </h1>
+          <p>
+            {query.error?.message ||
+              "Order details could not be loaded. Refresh to retrieve the current server record."}
+          </p>
+          <div>
+            <Button disabled={query.isFetching} onClick={() => query.refetch()}>
+              <RefreshCw size={17} />
+              {query.isFetching ? "Refreshing…" : "Retry order details"}
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/orders" prefetch={false}>
+                View my orders
+              </Link>
+            </Button>
+          </div>
+        </section>
       </div>
     );
   }
 
-  const canCancel = order.status === "pending";
-  const canReturn = order.status === "delivered";
+  // These conditions exactly preserve existing cancellation/return eligibility.
+  const { canCancel, canReturn } = orderActionEligibility(order);
+  const placedDate = recordedOrderDate(order.createdAt);
+  const displayOrder = {
+    ...order,
+    createdAt: placedDate ? order.createdAt : undefined,
+  };
+  const exportReady = hasInvoicePricing(order);
+  const stopped = ["cancelled", "returned", "refunded"].includes(order.status);
+  const paymentLabel = order.isPaid
+    ? "Payment confirmed"
+    : order.paymentMethod === "cod"
+      ? "Due on delivery"
+      : "Payment not confirmed";
+  const methodLabel =
+    order.paymentMethod === "stripe"
+      ? "Card / Stripe"
+      : order.paymentMethod === "cod"
+        ? "Cash on delivery"
+        : order.paymentMethod || "Not recorded";
 
   return (
-    <div className="container mx-auto px-4 py-6 max-w-4xl">
-      {/* Success Banner */}
-      {showSuccessBanner && (
-        <Alert className="mb-6 border-green-500 bg-green-50 dark:bg-green-950/20">
-          <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
-          <AlertDescription className="text-green-800 dark:text-green-300">
-            <div className="font-semibold mb-2">Order placed successfully!</div>
-            <div className="text-sm mb-3">
-              Your order has been confirmed. Order #{order.id.slice(0, 8)}
-            </div>
-            {/* Pricing Breakdown */}
-            <div className="text-sm space-y-1 bg-white/50 dark:bg-black/20 rounded-md p-3 border border-green-200 dark:border-green-800">
-              <div className="font-medium mb-2">Order Summary:</div>
-              <div className="flex justify-between">
-                <span>Subtotal:</span>
-                <span className="font-medium">
-                  {formatPrice(order.subtotal || 0)}
-                </span>
-              </div>
-              {order.discount && order.discount > 0 && (
-                <div className="flex justify-between text-green-700 dark:text-green-400">
-                  <span>Discount:</span>
-                  <span className="font-medium">
-                    -{formatPrice(order.discount)}
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between pt-2 border-t border-green-200 dark:border-green-800">
-                <span className="font-semibold">Total:</span>
-                <span className="font-semibold">
-                  {formatPrice(order.total || 0)}
-                </span>
-              </div>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="font-heading text-3xl">Order Details</h1>
-          <p className="text-muted-foreground">Order #{order.id.slice(0, 8)}</p>
+    <div className="forge-container forge-order-detail forge-order-page">
+      <Link href="/orders" prefetch={false} className="forge-order-detail-back">
+        <ArrowLeft size={15} />
+        Back to your orders
+      </Link>
+      {showSuccessBanner && !stopped && <OrderCelebration order={order} />}
+      {searchParams.get("canceled") === "true" && !order.isPaid && (
+        <div className="forge-order-detail-notice" role="status">
+          <ShieldCheck size={18} />
+          <p>
+            You returned from the payment flow. The order record below shows its
+            latest status; continue payment if it is offered.
+          </p>
         </div>
-        <span
-          className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
-            order.status
-          )}`}
-        >
-          {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+      )}
+      {query.isError && (
+        <div className="forge-order-detail-notice is-error" role="alert">
+          <AlertCircle size={18} />
+          <div>
+            <strong>The latest status could not be refreshed.</strong>
+            <p>
+              The last loaded record is shown. Refresh before taking an order
+              action.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            disabled={query.isFetching}
+            onClick={() => query.refetch()}
+          >
+            <RefreshCw size={15} />
+            Retry
+          </Button>
+        </div>
+      )}
+      <header className="forge-order-detail-heading">
+        <div>
+          <p className="forge-eyebrow">YOUR UPGRADE RECORD</p>
+          <h1 ref={heading} tabIndex={-1}>
+            Order #{order.id.slice(0, 8).toUpperCase()}
+          </h1>
+          <p>
+            {placedDate ? (
+              <time dateTime={placedDate.toISOString()}>
+                Placed{" "}
+                {placedDate.toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </time>
+            ) : (
+              "Order date not recorded"
+            )}
+          </p>
+        </div>
+        <div className={`forge-order-detail-status is-${order.status}`}>
+          <span />
+          <strong>
+            {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+          </strong>
+        </div>
+      </header>
+      <div className="forge-order-detail-signal">
+        <span>
+          <ShieldCheck size={15} />
+          {paymentLabel}
         </span>
+        <span>{methodLabel}</span>
+        <Button
+          variant="ghost"
+          disabled={query.isFetching || actionPending}
+          onClick={() => query.refetch()}
+        >
+          <RefreshCw size={14} />
+          {query.isFetching ? "Updating…" : "Refresh status"}
+        </Button>
       </div>
+      {!query.isError && <OrderPaymentAction order={order} />}
+      <OrderTimeline order={displayOrder} />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
-        <div className="space-y-6">
-          {/* Order Items */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Package className="h-5 w-5" />
-                Order Items
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+      <div className="forge-order-detail-layout">
+        <div className="forge-order-detail-sections">
+          <section
+            className="forge-order-detail-card"
+            aria-labelledby="order-items-heading"
+          >
+            <header>
+              <div>
+                <p className="forge-eyebrow">THE GEAR YOU ORDERED</p>
+                <h2 id="order-items-heading">
+                  <Package size={19} />
+                  Your loadout
+                </h2>
+              </div>
+              <span>
+                {order.items.length}{" "}
+                {order.items.length === 1 ? "product" : "products"}
+              </span>
+            </header>
+            <ul className="forge-order-detail-items">
               {order.items.map((item, index) => (
-                <div
-                  key={index}
-                  className="flex justify-between pb-4 border-b last:border-0 last:pb-0"
-                >
+                <li key={`${item.productId}-${index}`}>
+                  <span className="forge-order-item-number" aria-hidden="true">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
                   <div>
-                    <div className="font-medium">
-                      {item.name || `Item ${index + 1}`}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      Quantity: {item.quantity}
-                    </div>
+                    <h3>{item.name || `Item ${index + 1}`}</h3>
+                    <p>Quantity {item.quantity}</p>
+                    {item.productId && (
+                      <Link
+                        href={`/products/${encodeURIComponent(item.productId)}`}
+                        prefetch={false}
+                      >
+                        View current listing <ArrowUpRight size={12} />
+                      </Link>
+                    )}
                   </div>
-                  <div className="text-right">
-                    <div className="font-medium">
-                      {formatPrice((item.price || 0) * item.quantity)}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {formatPrice(item.price || 0)} each
-                    </div>
+                  <div className="forge-order-item-price">
+                    <strong>{amount(recordedLineTotal(item))}</strong>
+                    <span>
+                      {recordedOrderAmount(item.price)
+                        ? `${formatPrice(item.price)} each`
+                        : "Unit price not recorded"}
+                    </span>
                   </div>
-                </div>
+                </li>
               ))}
-            </CardContent>
-          </Card>
+            </ul>
+            {!order.items.length && (
+              <p className="forge-order-detail-empty">
+                No line items were included in this order record.
+              </p>
+            )}
+          </section>
 
-          {/* Shipping Address */}
-          {order.address && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MapPin className="h-5 w-5" />
-                  Shipping Address
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-sm space-y-1">
-                  <div className="font-medium">{order.address.fullName}</div>
-                  <div>{order.address.address}</div>
-                  <div>
-                    {order.address.city}, {order.address.state}{" "}
-                    {order.address.postalCode}
-                  </div>
-                  <div>{order.address.country}</div>
-                  <div>{order.address.phoneNumber}</div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          <section
+            className="forge-order-detail-card"
+            aria-labelledby="order-shipping-heading"
+          >
+            <header>
+              <h2 id="order-shipping-heading">
+                <MapPin size={19} />
+                Shipping address
+              </h2>
+            </header>
+            {order.address ? (
+              <address className="forge-order-shipping">
+                <strong>
+                  {order.address.fullName || "Recipient not recorded"}
+                </strong>
+                <span>
+                  {order.address.address || "Street address not recorded"}
+                </span>
+                <span>
+                  {[
+                    order.address.city,
+                    order.address.state,
+                    order.address.postalCode,
+                  ]
+                    .filter(Boolean)
+                    .join(", ") || "City and postal details not recorded"}
+                </span>
+                <span>{order.address.country || "Country not recorded"}</span>
+                {order.address.phoneNumber && (
+                  <span>{order.address.phoneNumber}</span>
+                )}
+              </address>
+            ) : (
+              <p className="forge-order-detail-empty">
+                No shipping address was included in this order record.
+              </p>
+            )}
+          </section>
 
-          {/* Actions */}
           {(canCancel || canReturn) && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Order Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
+            <section
+              className="forge-order-detail-card forge-order-actions"
+              aria-labelledby="order-actions-heading"
+            >
+              <header>
+                <h2 id="order-actions-heading">Manage this order</h2>
+              </header>
+              <p>
+                {canCancel
+                  ? "Cancellation is offered for this pending, unpaid cash-on-delivery order. The server confirms the final result."
+                  : "A return request is available for the delivered order. The server checks eligibility and records the request."}
+              </p>
+              <div>
                 {canCancel && (
                   <Button
-                    variant="destructive"
-                    onClick={handleCancelOrder}
-                    disabled={cancelOrderMutation.isPending}
-                    className="w-full"
+                    className="forge-order-cancel-button"
+                    variant="outline"
+                    disabled={
+                      actionPending || query.isFetching || query.isError
+                    }
+                    onClick={(event) => {
+                      actionTrigger.current = event.currentTarget;
+                      setAction("cancel");
+                    }}
                   >
-                    <XCircle className="h-4 w-4 mr-2" />
-                    {cancelOrderMutation.isPending
-                      ? "Cancelling..."
-                      : "Cancel Order"}
+                    <XCircle size={16} />
+                    Cancel order
                   </Button>
                 )}
                 {canReturn && (
                   <Button
                     variant="outline"
-                    onClick={handleRequestReturn}
-                    disabled={returnOrderMutation.isPending}
-                    className="w-full"
+                    disabled={
+                      actionPending || query.isFetching || query.isError
+                    }
+                    onClick={(event) => {
+                      actionTrigger.current = event.currentTarget;
+                      setAction("return");
+                    }}
                   >
-                    <RotateCcw className="h-4 w-4 mr-2" />
-                    {returnOrderMutation.isPending
-                      ? "Requesting..."
-                      : "Request Return"}
+                    <RotateCcw size={16} />
+                    Request return
                   </Button>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+              {actionError && (
+                <p className="forge-order-action-inline-error" role="status">
+                  The last request needs review. Reopen the action to check its
+                  status before retrying.
+                </p>
+              )}
+            </section>
           )}
         </div>
 
-        {/* Order Summary */}
-        <div>
-          <Card className="sticky top-4">
-            <CardHeader>
-              <CardTitle>Order Summary</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span>Subtotal</span>
-                  <span>{formatPrice(order.subtotal || 0)}</span>
-                </div>
-                {order.discount && order.discount > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span>Discount</span>
-                    <span>-{formatPrice(order.discount)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between font-semibold text-lg border-t pt-2">
-                  <span>Total</span>
-                  <span>{formatPrice(order.total || 0)}</span>
-                </div>
+        <aside
+          className="forge-order-detail-card forge-order-detail-summary"
+          aria-labelledby="order-summary-heading"
+        >
+          <header>
+            <div>
+              <p className="forge-eyebrow">CONFIRMED ORDER RECORD</p>
+              <h2 id="order-summary-heading">Order summary</h2>
+            </div>
+            <FileText size={19} />
+          </header>
+          <dl className="forge-order-amounts">
+            {(
+              [
+                ["Subtotal", order.subtotal],
+                ["Discount", order.discount],
+                ["Shipping", order.shipping],
+                ["Tax", order.tax],
+                ["Total", order.total],
+              ] as const
+            ).map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd
+                  className={
+                    !recordedOrderAmount(value) ? "is-unrecorded" : undefined
+                  }
+                >
+                  {label === "Discount" &&
+                  recordedOrderAmount(value) &&
+                  value > 0
+                    ? `−${formatPrice(value)}`
+                    : amount(value)}
+                </dd>
               </div>
-
-              <div className="text-xs text-muted-foreground space-y-1">
-                <div>Order ID: {order.id}</div>
-                <div>
-                  Placed:{" "}
-                  {order.createdAt &&
-                    formatDistanceToNow(new Date(order.createdAt), {
-                      addSuffix: true,
-                    })}
-                </div>
-                {order.paymentIntentId && (
-                  <div>Payment ID: {order.paymentIntentId.slice(0, 16)}...</div>
-                )}
+            ))}
+          </dl>
+          <dl className="forge-order-reference">
+            <div>
+              <dt>Order reference</dt>
+              <dd>{order.id}</dd>
+            </div>
+            <div>
+              <dt>Placed</dt>
+              <dd>
+                {placedDate
+                  ? formatDistanceToNow(placedDate, { addSuffix: true })
+                  : "Not recorded"}
+              </dd>
+            </div>
+            <div>
+              <dt>Payment method</dt>
+              <dd>{methodLabel}</dd>
+            </div>
+            <div>
+              <dt>Payment state</dt>
+              <dd>{paymentLabel}</dd>
+            </div>
+            {order.paymentIntentId && (
+              <div>
+                <dt>Payment reference</dt>
+                <dd>{order.paymentIntentId}</dd>
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            )}
+          </dl>
+          <p className="forge-order-record-note">
+            <ShieldCheck size={14} />
+            Amounts and status reflect the server record. Missing values remain
+            unrecorded.
+          </p>
+        </aside>
       </div>
+
+      <section className="forge-order-invoice-area" aria-label="Order invoice">
+        <div className="forge-order-invoice-heading">
+          <div>
+            <p className="forge-eyebrow">KEEP YOUR RECORD</p>
+            <h2>Your invoice.</h2>
+          </div>
+          <FileText size={23} />
+        </div>
+        {exportReady ? (
+          <Invoice order={displayOrder} />
+        ) : (
+          <div className="forge-order-detail-notice">
+            <AlertCircle size={19} />
+            <div>
+              <strong>Complete invoice pricing is not recorded.</strong>
+              <p>
+                Some line prices or subtotal, discount, shipping, tax or total
+                fields are missing. Print/download is unavailable so absent
+                amounts cannot become $0 values. A recorded total above remains
+                valid even if line details are incomplete.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              disabled={query.isFetching}
+              onClick={() => query.refetch()}
+            >
+              <RefreshCw size={15} />
+              Refresh order
+            </Button>
+          </div>
+        )}
+      </section>
+      <OrderActionDialog
+        action={action}
+        orderReference={order.id.slice(0, 8).toUpperCase()}
+        eligible={
+          action === "cancel"
+            ? canCancel
+            : action === "return"
+              ? canReturn
+              : false
+        }
+        pending={actionPending}
+        checking={query.isFetching}
+        statusUnavailable={query.isError}
+        error={actionError}
+        reviewRequired={reviewRequired}
+        onClose={() => setAction(null)}
+        onConfirm={confirmAction}
+        onRefresh={refreshActionStatus}
+        onRestoreFocus={() => {
+          if (actionTrigger.current?.isConnected) actionTrigger.current.focus();
+          else heading.current?.focus();
+        }}
+      />
     </div>
   );
 }

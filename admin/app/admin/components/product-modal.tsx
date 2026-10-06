@@ -4,8 +4,10 @@ import type React from "react";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
-import { X, Plus, Trash2 } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Plus, Trash2, Package, ImagePlus, ListChecks, DollarSign, Ruler } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import "../forge-commerce.css";
 
 const PRODUCT_CATEGORIES = [
   "Prebuilt PCs",
@@ -47,7 +49,7 @@ const PRODUCT_CATEGORIES = [
 interface ProductModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (product: any) => void;
+  onSubmit: (product: any) => Promise<void>;
   initialData?: any;
   isEditing?: boolean;
 }
@@ -79,12 +81,17 @@ export function ProductModal({
     isFeatured: false,
   });
 
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [uploadError, setUploadError] = useState("");
   const [newImage, setNewImage] = useState("");
   const [newSpec, setNewSpec] = useState({ key: "", value: "" });
   const [newFeature, setNewFeature] = useState("");
 
   // Update formData when initialData changes (for editing)
   useEffect(() => {
+    setFormError("");
+    setUploadError("");
     if (initialData && isEditing) {
       setFormData({
         name: initialData.name || "",
@@ -92,9 +99,9 @@ export function ProductModal({
         category: initialData.category || "CPU",
         brand: initialData.brand || "",
         description: initialData.description || "",
-        originalPrice: initialData.originalPrice || "",
+        originalPrice: initialData.originalPrice ?? "",
         discountPercentage: initialData.discountPercentage || 0,
-        stock: initialData.stock || "",
+        stock: initialData.stock ?? "",
         images: initialData.images || [],
         imageFiles: [],
         specifications:
@@ -141,7 +148,7 @@ export function ProductModal({
         isFeatured: false,
       });
     }
-  }, [initialData, isEditing]);
+  }, [initialData, isEditing, isOpen]);
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -220,47 +227,44 @@ export function ProductModal({
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
+    setFormError("");
 
     if (!formData.name.trim()) {
-      alert("Product name is required");
+      setFormError("Product name is required");
       return;
     }
     if (!formData.sku.trim()) {
-      alert("SKU is required");
+      setFormError("SKU is required");
       return;
     }
     if (!formData.brand.trim()) {
-      alert("Brand is required");
+      setFormError("Brand is required");
       return;
     }
     if (!formData.description.trim()) {
-      alert("Description is required");
+      setFormError("Description is required");
       return;
     }
     if (formData.images.length === 0) {
-      alert("At least one image is required");
+      setFormError("At least one image is required");
       return;
     }
     if (!formData.originalPrice) {
-      alert("Original price is required");
+      setFormError("Original price is required");
       return;
     }
     if (formData.stock === "") {
-      alert("Stock quantity is required");
+      setFormError("Stock quantity is required");
       return;
     }
-
-    const finalPrice =
-      Number.parseFloat(formData.originalPrice) *
-      (1 - formData.discountPercentage / 100);
 
     const submitData = {
       ...formData,
       originalPrice: Number.parseFloat(formData.originalPrice),
       discountPercentage: Number(formData.discountPercentage),
-      finalPrice: Number.parseFloat(finalPrice.toFixed(2)),
       stock: Number.parseInt(formData.stock),
       weight: formData.weight ? Number.parseFloat(formData.weight) : undefined,
       dimensions: {
@@ -276,472 +280,181 @@ export function ProductModal({
       },
     };
 
-    onSubmit(submitData);
-
-    setFormData({
-      name: "",
-      sku: "",
-      category: "CPU",
-      brand: "",
-      description: "",
-      originalPrice: "",
-      discountPercentage: 0,
-      stock: "",
-      images: [],
-      imageFiles: [],
-      specifications: [],
-      features: [],
-      warranty: "1 year limited warranty",
-      weight: "",
-      dimensions: { length: "", width: "", height: "" },
-      isActive: true,
-      isFeatured: false,
-    });
+    setSaving(true);
+    try { await onSubmit(submitData); } finally { setSaving(false); }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto">
-      <Card className="glass-dark border-[#2A2A35] w-full max-w-4xl mx-4 my-8 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-white">
-            {isEditing ? "Edit Product" : "Add New Product"}
-          </h2>
-          <button onClick={onClose} className="text-[#A0A0A8] hover:text-white">
-            <X className="w-6 h-6" />
-          </button>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open && !saving) onClose(); }}>
+      <DialogContent className="fc-modal fc-editor">
+        <div className="fc-modal-header">
+          <span className="fa-kicker">Catalogue editor</span>
+          <DialogTitle>{isEditing ? "Edit product" : "Add a new product"}</DialogTitle>
+          <DialogDescription>Product information, pricing and media for your storefront. Fields marked * are required.</DialogDescription>
         </div>
-
-        <form
-          onSubmit={handleSubmit}
-          className="space-y-6 max-h-[80vh] overflow-y-auto"
-        >
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-[#A0A0A8] mb-2">
-                Product Name *
-              </label>
-              <Input
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                placeholder="Enter product name"
-                className="bg-[#1F1F28] border-[#2A2A35] text-white"
-                maxLength={100}
-                required
-              />
+        <form onSubmit={handleSubmit} className="fc-editor-form">
+          <section>
+            <h3 className="fc-editor-section-title">
+              <Package size={16} />Product essentials</h3>
+            <div className="fa-form-grid">
+              <div className="fa-field">
+                <label htmlFor="product-name">Product name *</label>
+                <Input id="product-name" name="name" value={formData.name} onChange={handleChange} placeholder="Enter product name" maxLength={100} required />
+              </div>
+              <div className="fa-field">
+                <label htmlFor="product-sku">SKU *</label>
+                <Input id="product-sku" name="sku" value={formData.sku} onChange={handleChange} placeholder="e.g. CF-GPU-001" disabled={isEditing} required />
+              </div>
+              <div className="fa-field">
+                <label htmlFor="product-category">Category *</label>
+                <Select value={formData.category} onValueChange={(category) => setFormData((prev) => ({ ...prev, category }))} required>
+                  <SelectTrigger id="product-category">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>{PRODUCT_CATEGORIES.map((cat) =>
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="fa-field">
+                <label htmlFor="product-brand">Brand *</label>
+                <Input id="product-brand" name="brand" value={formData.brand} onChange={handleChange} placeholder="Enter brand" required />
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-[#A0A0A8] mb-2">
-                SKU *
-              </label>
-              <Input
-                type="text"
-                name="sku"
-                value={formData.sku}
-                onChange={handleChange}
-                placeholder="Enter SKU"
-                className="bg-[#1F1F28] border-[#2A2A35] text-white"
-                disabled={isEditing}
-                required
-              />
+            <div className="fa-field fc-field-after">
+              <label htmlFor="product-description">Description *</label>
+              <textarea id="product-description" name="description" value={formData.description} onChange={handleChange} placeholder="Tell customers what makes this product stand out…" className="w-full rounded-lg resize-y" rows={4} maxLength={2000} required />
+              <span className="fc-muted">{formData.description.length}/2000 characters</span>
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-[#A0A0A8] mb-2">
-                Category *
-              </label>
-              <select
-                name="category"
-                value={formData.category}
-                onChange={handleChange}
-                className="w-full px-4 py-2 bg-[#1F1F28] border border-[#2A2A35] text-white rounded-lg"
-                required
-              >
-                {PRODUCT_CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
+          </section>
+          <section>
+            <h3 className="fc-editor-section-title">
+              <DollarSign size={16} />Pricing & inventory</h3>
+            <div className="fc-three-columns">
+              <div className="fa-field">
+                <label htmlFor="product-price">Original price ($) *</label>
+                <Input id="product-price" type="number" name="originalPrice" value={formData.originalPrice} onChange={handleChange} placeholder="0.00" step="0.01" min="0" required />
+              </div>
+              <div className="fa-field">
+                <label htmlFor="product-discount">Discount (%)</label>
+                <Input id="product-discount" type="number" name="discountPercentage" value={formData.discountPercentage} onChange={handleChange} min="0" max="100" />
+              </div>
+              <div className="fa-field">
+                <label htmlFor="product-stock">Stock quantity *</label>
+                <Input id="product-stock" type="number" name="stock" value={formData.stock} onChange={handleChange} placeholder="0" min="0" required />
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-[#A0A0A8] mb-2">
-                Brand *
-              </label>
-              <Input
-                type="text"
-                name="brand"
-                value={formData.brand}
-                onChange={handleChange}
-                placeholder="Enter brand"
-                className="bg-[#1F1F28] border-[#2A2A35] text-white"
-                required
-              />
+            <div className="fc-price-preview">
+              <span>Storefront price after discount</span>
+              <strong>${(Number(formData.originalPrice || 0) * (1 - Number(formData.discountPercentage || 0) / 100)).toFixed(2)}</strong>
             </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-[#A0A0A8] mb-2">
-              Description *
+          </section>
+          <section>
+            <h3 className="fc-editor-section-title">
+              <ImagePlus size={16} />Product media *</h3>
+            <label className="fc-upload" htmlFor="product-image-upload">
+              <div>
+                <ImagePlus size={26} className="mx-auto mb-2" />
+                <p>Choose product images</p>
+                <p>PNG, JPG or WEBP · Up to 5 MB each</p>
+              </div>
+              <input id="product-image-upload" type="file" accept="image/*" multiple onChange={(e) => {
+                setUploadError("");
+                  const files = Array.from(e.target.files || []);
+                files.forEach((file) => {
+                  if (file.size > 5 * 1024 * 1024) { setUploadError(`${file.name} is too large. Maximum file size is 5 MB.`); return; }
+                  const reader = new FileReader();
+                  reader.onloadend = () => { setFormData((prev: any) => ({ ...prev, images: [...prev.images, reader.result], imageFiles: [...(prev.imageFiles || []), file] })); };
+                  reader.readAsDataURL(file);
+                });
+                e.target.value = "";
+              }} />
             </label>
-            <textarea
-              name="description"
-              value={formData.description}
-              onChange={handleChange}
-              placeholder="Enter product description"
-              className="w-full px-4 py-2 bg-[#1F1F28] border border-[#2A2A35] text-white rounded-lg resize-none"
-              rows={4}
-              maxLength={2000}
-              required
-            />
-            <p className="text-xs text-[#A0A0A8] mt-1">
-              {formData.description.length}/2000
-            </p>
+            {uploadError && <p className="fc-form-error" role="alert">{uploadError}</p>}
+            <div className="fc-input-action fc-field-after">
+              <Input aria-label="Product image URL" value={newImage} onChange={(e) => setNewImage(e.target.value)} placeholder="Or paste an image URL…" />
+              <Button type="button" variant="outline" onClick={addImage} aria-label="Add image URL">
+                <Plus size={16} />Add</Button>
+            </div>
+            {formData.images.length > 0 ? <div className="fc-image-grid fc-field-after">{formData.images.map((img: string, idx: number) =>
+              <div className="fc-image-preview" key={idx}>
+                <img src={img} alt={`Product image ${idx + 1}`} />
+                <button type="button" className="fc-image-remove" onClick={() => removeImage(idx)} aria-label={`Remove product image ${idx + 1}`}>
+                  <Trash2 size={14} />
+                </button>
+              </div>)}</div> : <p className="fc-muted fc-field-after">Add at least one image. The first image becomes the catalogue cover.</p>}
+          </section>
+          <section>
+            <h3 className="fc-editor-section-title">
+              <ListChecks size={16} />Specifications & features</h3>
+            <div className="fa-field">
+              <label>Specifications</label>
+              <div className="fc-input-action fc-spec-entry">
+                <Input aria-label="Specification name" value={newSpec.key} onChange={(e) => setNewSpec({ ...newSpec, key: e.target.value })} placeholder="Name (e.g. Processor)" />
+                <Input aria-label="Specification value" value={newSpec.value} onChange={(e) => setNewSpec({ ...newSpec, value: e.target.value })} placeholder="Value (e.g. Intel i9)" />
+                <Button type="button" variant="outline" onClick={addSpecification} aria-label="Add specification">
+                  <Plus size={16} />
+                </Button>
+              </div>
+            </div>
+            <div className="fc-editor-list">{formData.specifications.map((spec: any, idx: number) =>
+              <div className="fc-editor-list-row" key={idx}>
+                <span>
+                  <strong>{spec.key}</strong> · {spec.value}</span>
+                <button type="button" onClick={() => removeSpecification(idx)} aria-label={`Remove specification ${spec.key}`}>
+                  <Trash2 size={14} />
+                </button>
+              </div>)}</div>
+            <div className="fa-field fc-field-after">
+              <label htmlFor="product-new-feature">Features</label>
+              <div className="fc-input-action">
+                <Input id="product-new-feature" value={newFeature} onChange={(e) => setNewFeature(e.target.value)} placeholder="Add a product highlight…" />
+                <Button type="button" variant="outline" onClick={addFeature} aria-label="Add feature">
+                  <Plus size={16} />
+                </Button>
+              </div>
+            </div>
+            <div className="fc-editor-list">{formData.features.map((feature: string, idx: number) =>
+              <div className="fc-editor-list-row" key={idx}>
+                <span>{feature}</span>
+                <button type="button" onClick={() => removeFeature(idx)} aria-label={`Remove feature ${idx + 1}`}>
+                  <Trash2 size={14} />
+                </button>
+              </div>)}</div>
+          </section>
+          <section>
+            <h3 className="fc-editor-section-title">
+              <Ruler size={16} />Shipping & warranty</h3>
+            <div className="fa-form-grid">
+              <div className="fa-field">
+                <label htmlFor="product-warranty">Warranty</label>
+                <Input id="product-warranty" name="warranty" value={formData.warranty} onChange={handleChange} placeholder="e.g. 1 year limited warranty" />
+              </div>
+              <div className="fa-field">
+                <label htmlFor="product-weight">Weight (kg)</label>
+                <Input id="product-weight" type="number" name="weight" value={formData.weight} onChange={handleChange} placeholder="0.00" step="0.01" min="0" />
+              </div>
+            </div>
+            <div className="fc-three-columns fc-field-after">{(["length", "width", "height"] as const).map((dimension) =>
+              <div className="fa-field" key={dimension}>
+                <label htmlFor={`product-${dimension}`} className="capitalize">{dimension} (cm)</label>
+                <Input id={`product-${dimension}`} type="number" name={dimension} value={formData.dimensions[dimension]} onChange={handleDimensionChange} placeholder="0.00" step="0.01" min="0" />
+              </div>)}</div>
+          </section>
+          <div className="fc-publish-controls">
+            <label>
+              <input type="checkbox" name="isActive" checked={formData.isActive} onChange={handleChange} />Publish to storefront</label>
+            <label>
+              <input type="checkbox" name="isFeatured" checked={formData.isFeatured} onChange={handleChange} />Feature this product</label>
           </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-[#A0A0A8] mb-2">
-                Original Price *
-              </label>
-              <Input
-                type="number"
-                name="originalPrice"
-                value={formData.originalPrice}
-                onChange={handleChange}
-                placeholder="0.00"
-                step="0.01"
-                min="0"
-                className="bg-[#1F1F28] border-[#2A2A35] text-white"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#A0A0A8] mb-2">
-                Discount %
-              </label>
-              <Input
-                type="number"
-                name="discountPercentage"
-                value={formData.discountPercentage}
-                onChange={handleChange}
-                placeholder="0"
-                min="0"
-                max="100"
-                className="bg-[#1F1F28] border-[#2A2A35] text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#A0A0A8] mb-2">
-                Stock *
-              </label>
-              <Input
-                type="number"
-                name="stock"
-                value={formData.stock}
-                onChange={handleChange}
-                placeholder="0"
-                min="0"
-                className="bg-[#1F1F28] border-[#2A2A35] text-white"
-                required
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-[#A0A0A8] mb-2">
-              Images * (at least one required)
-            </label>
-
-            {/* File Upload */}
-            <div className="mb-3">
-              <label className="block">
-                <div className="flex items-center justify-center w-full px-4 py-6 bg-[#1F1F28] border-2 border-dashed border-[#2A2A35] rounded-lg cursor-pointer hover:border-[#7C3AED] transition-colors">
-                  <div className="text-center">
-                    <Plus className="w-8 h-8 mx-auto mb-2 text-[#A0A0A8]" />
-                    <p className="text-sm text-[#A0A0A8]">
-                      Click to upload images
-                    </p>
-                    <p className="text-xs text-[#6A6A78] mt-1">
-                      PNG, JPG, WEBP up to 5MB
-                    </p>
-                  </div>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={(e) => {
-                      const files = Array.from(e.target.files || []);
-                      files.forEach((file) => {
-                        if (file.size > 5 * 1024 * 1024) {
-                          alert(`${file.name} is too large. Max size is 5MB`);
-                          return;
-                        }
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          setFormData((prev: any) => ({
-                            ...prev,
-                            images: [...prev.images, reader.result],
-                            imageFiles: [...(prev.imageFiles || []), file],
-                          }));
-                        };
-                        reader.readAsDataURL(file);
-                      });
-                      e.target.value = "";
-                    }}
-                    className="hidden"
-                  />
-                </div>
-              </label>
-            </div>
-
-            {/* URL Input (Optional) */}
-            <div className="flex gap-2 mb-3">
-              <Input
-                type="text"
-                value={newImage}
-                onChange={(e) => setNewImage(e.target.value)}
-                placeholder="Or enter image URL"
-                className="bg-[#1F1F28] border-[#2A2A35] text-white flex-1"
-              />
-              <Button
-                type="button"
-                onClick={addImage}
-                className="bg-[#7C3AED] hover:bg-[#6D28D9] text-white"
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
-
-            {/* Image Preview Grid */}
-            <div className="grid grid-cols-3 gap-3">
-              {formData.images.map((img: string, idx: number) => (
-                <div
-                  key={idx}
-                  className="relative group bg-[#1F1F28] rounded-lg border border-[#2A2A35] overflow-hidden aspect-square"
-                >
-                  <img
-                    src={img}
-                    alt={`Product ${idx + 1}`}
-                    className="w-full h-full object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeImage(idx)}
-                    className="absolute top-2 right-2 p-1.5 bg-red-500 hover:bg-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Trash2 className="w-4 h-4 text-white" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-[#A0A0A8] mb-2">
-              Specifications
-            </label>
-            <div className="flex gap-2 mb-3">
-              <Input
-                type="text"
-                value={newSpec.key}
-                onChange={(e) =>
-                  setNewSpec({ ...newSpec, key: e.target.value })
-                }
-                placeholder="Key (e.g., Processor)"
-                className="bg-[#1F1F28] border-[#2A2A35] text-white flex-1"
-              />
-              <Input
-                type="text"
-                value={newSpec.value}
-                onChange={(e) =>
-                  setNewSpec({ ...newSpec, value: e.target.value })
-                }
-                placeholder="Value (e.g., Intel i9)"
-                className="bg-[#1F1F28] border-[#2A2A35] text-white flex-1"
-              />
-              <Button
-                type="button"
-                onClick={addSpecification}
-                className="bg-[#7C3AED] hover:bg-[#6D28D9] text-white"
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {formData.specifications.map((spec: any, idx: number) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between bg-[#1F1F28] p-3 rounded-lg border border-[#2A2A35]"
-                >
-                  <span className="text-sm text-[#A0A0A8]">
-                    <strong>{spec.key}:</strong> {spec.value}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeSpecification(idx)}
-                    className="text-red-500 hover:text-red-400"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-[#A0A0A8] mb-2">
-              Features
-            </label>
-            <div className="flex gap-2 mb-3">
-              <Input
-                type="text"
-                value={newFeature}
-                onChange={(e) => setNewFeature(e.target.value)}
-                placeholder="Enter feature"
-                className="bg-[#1F1F28] border-[#2A2A35] text-white flex-1"
-              />
-              <Button
-                type="button"
-                onClick={addFeature}
-                className="bg-[#7C3AED] hover:bg-[#6D28D9] text-white"
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {formData.features.map((feature: string, idx: number) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between bg-[#1F1F28] p-3 rounded-lg border border-[#2A2A35]"
-                >
-                  <span className="text-sm text-[#A0A0A8]">{feature}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeFeature(idx)}
-                    className="text-red-500 hover:text-red-400"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-[#A0A0A8] mb-2">
-                Warranty
-              </label>
-              <Input
-                type="text"
-                name="warranty"
-                value={formData.warranty}
-                onChange={handleChange}
-                placeholder="e.g., 1 year limited warranty"
-                className="bg-[#1F1F28] border-[#2A2A35] text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#A0A0A8] mb-2">
-                Weight (kg)
-              </label>
-              <Input
-                type="number"
-                name="weight"
-                value={formData.weight}
-                onChange={handleChange}
-                placeholder="0.00"
-                step="0.01"
-                min="0"
-                className="bg-[#1F1F28] border-[#2A2A35] text-white"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-[#A0A0A8] mb-2">
-              Dimensions
-            </label>
-            <div className="grid grid-cols-3 gap-4">
-              <Input
-                type="number"
-                name="length"
-                value={formData.dimensions.length}
-                onChange={handleDimensionChange}
-                placeholder="Length (cm)"
-                step="0.01"
-                min="0"
-                className="bg-[#1F1F28] border-[#2A2A35] text-white"
-              />
-              <Input
-                type="number"
-                name="width"
-                value={formData.dimensions.width}
-                onChange={handleDimensionChange}
-                placeholder="Width (cm)"
-                step="0.01"
-                min="0"
-                className="bg-[#1F1F28] border-[#2A2A35] text-white"
-              />
-              <Input
-                type="number"
-                name="height"
-                value={formData.dimensions.height}
-                onChange={handleDimensionChange}
-                placeholder="Height (cm)"
-                step="0.01"
-                min="0"
-                className="bg-[#1F1F28] border-[#2A2A35] text-white"
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                name="isActive"
-                checked={formData.isActive}
-                onChange={handleChange}
-                className="w-4 h-4"
-              />
-              <span className="text-sm text-[#A0A0A8]">Active</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                name="isFeatured"
-                checked={formData.isFeatured}
-                onChange={handleChange}
-                className="w-4 h-4"
-              />
-              <span className="text-sm text-[#A0A0A8]">Featured</span>
-            </label>
-          </div>
-
-          <div className="flex gap-3 justify-end pt-4 border-t border-[#2A2A35]">
-            <Button
-              type="button"
-              onClick={onClose}
-              className="bg-[#2A2A35] text-white hover:bg-[#3A3A45]"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              className="bg-gradient-to-r from-[#7C3AED] to-[#3B82F6] hover:shadow-lg hover:shadow-purple-500/20"
-            >
-              {isEditing ? "Update Product" : "Add Product"}
-            </Button>
+          {formError && <p className="fc-form-error" role="alert">{formError}</p>}
+          <div className="fc-modal-footer">
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+            <Button type="submit" disabled={saving}>{saving ? "Saving product…" : isEditing ? "Update product" : "Add product"}</Button>
           </div>
         </form>
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

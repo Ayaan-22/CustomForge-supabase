@@ -12,22 +12,23 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode
 }) {
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
 
   return (
     <ApiProvider>
-      <div className="flex h-screen bg-gradient-to-br from-[#0B0B0F] to-[#14141A]">
+      <div className="fa-workspace">
         {/* Sidebar */}
-        <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
+        <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} collapsed={collapsed} onCollapse={() => setCollapsed(!collapsed)} />
 
         {/* Main Content */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="fa-workspace-main">
           {/* Topbar */}
           <Topbar onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
 
           {/* Page Content */}
-          <main className="flex-1 overflow-auto">
-            <div className="p-6 md:p-8">{children}</div>
+          <main id="admin-main-content" className="fa-main-content" tabIndex={-1}>
+            <div className="fa-content-wrap">{children}</div>
           </main>
         </div>
       </div>

@@ -9,8 +9,8 @@ export interface Coupon {
   code: string;
   discountType: "percentage" | "fixed";
   discountValue: number;
-  validFrom: string;
-  validTo: string;
+  validFrom: string | null;
+  validTo: string | null;
   minPurchase?: number;
   maxDiscount?: number;
   isActive: boolean;
@@ -30,8 +30,8 @@ export interface CouponPayload {
   code: string;
   discountType: "percent" | "fixed";
   discountValue: number;
-  validFrom: string;
-  validTo: string;
+  validFrom: string | null;
+  validTo: string | null;
   minPurchase?: number;
   maxDiscount?: number;
   isActive: boolean;

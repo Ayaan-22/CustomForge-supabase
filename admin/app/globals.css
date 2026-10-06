@@ -37,6 +37,21 @@
   --sidebar-accent-foreground: #000000;
   --sidebar-border: #e5e5e5;
   --sidebar-ring: #000000;
+
+  --cf-space-1: 0.25rem;
+  --cf-space-2: 0.5rem;
+  --cf-space-3: 0.75rem;
+  --cf-space-4: 1rem;
+  --cf-space-6: 1.5rem;
+  --cf-space-8: 2rem;
+  --cf-page-min-h: 48vh;
+  --cf-text-xs: 0.75rem;
+  --cf-text-sm: 0.875rem;
+  --cf-text-base: 1rem;
+  --cf-text-lg: 1.125rem;
+  --cf-text-xl: 1.25rem;
+  --cf-text-2xl: 1.5rem;
+  --cf-text-3xl: 1.875rem;
 }
 
 /* Removed @custom-variant and oklch() values, using only hex colors */
@@ -76,8 +91,8 @@
 }
 
 @theme inline {
-  --font-sans: "Geist", "Geist Fallback";
-  --font-mono: "Geist Mono", "Geist Mono Fallback";
+  --font-sans: var(--font-admin-sans), Arial, sans-serif;
+  --font-mono: var(--font-admin-mono), ui-monospace, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -140,7 +155,7 @@
 
   .gradient-border {
     @apply relative border border-transparent bg-clip-padding;
-    background-image: linear-gradient(#0b0b0f, #0b0b0f), linear-gradient(135deg, #7c3aed, #3b82f6);
+    background-image: linear-gradient(var(--card), var(--card)), linear-gradient(135deg, var(--primary), var(--fa-violet));
     background-origin: border-box;
     background-clip: padding-box, border-box;
   }

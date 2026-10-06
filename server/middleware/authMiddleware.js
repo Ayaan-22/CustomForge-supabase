@@ -4,24 +4,74 @@ import AppError from "../utils/appError.js";
 import { logger } from "./logger.js";
 import { verify2FAToken, verifyJWT } from "../utils/generateToken.js";
 import { findUserById } from "../models/User.js";
+import { getAuthClient, bindDatabaseIdentity } from "../config/db.js";
 
 /* =======================================================================================
-   PROTECT – Authenticates user using JWT
+   OPTIONAL AUTH – Session bootstrap (GET /users/me, etc.)
+   ======================================================================================= */
+/**
+ * Optional JWT: sets req.user when a valid Bearer token is present; otherwise leaves req.user unset.
+ * Use for routes like GET /users/me that must work for anonymous clients without 401 noise.
+ */
+export const optionalAuth = asyncHandler(async (req, res, next) => {
+  const authHeader = req.headers.authorization || "";
+  if (!authHeader.startsWith("Bearer ")) {
+    req.user = undefined;
+    return next();
+  }
+
+  const token = authHeader.split(" ")[1];
+  if (!token) {
+    req.user = undefined;
+    return next();
+  }
+
+  let decoded;
+  try {
+    decoded = verifyJWT(token);
+  } catch {
+    return next(new AppError("Invalid or expired token.", 401));
+  }
+
+  const supabase = getAuthClient();
+  const currentUser = await findUserById(decoded.userId, {}, supabase);
+
+  if (!currentUser) {
+    req.user = undefined;
+    return next();
+  }
+
+  if (currentUser.active === false) {
+    return next(new AppError("Account disabled. Contact support.", 403));
+  }
+
+  if (
+    currentUser.passwordChangedAt &&
+    decoded.iat * 1000 < new Date(currentUser.passwordChangedAt).getTime()
+  ) {
+    return next(new AppError("Password recently changed. Login again.", 401));
+  }
+
+  req.user = currentUser;
+  bindDatabaseIdentity(req, currentUser.id);
+  res.locals.user = currentUser;
+  next();
+});
+
+/* =======================================================================================
+   PROTECT – Authenticates user using JWT (required)
    ======================================================================================= */
 export const protect = asyncHandler(async (req, res, next) => {
   let token;
 
   if (req.headers.authorization?.startsWith("Bearer ")) {
     token = req.headers.authorization.split(" ")[1];
-  } else if (req.cookies?.jwt) {
-    token = req.cookies.jwt;
   }
 
   if (!token) {
-    logger.warn("Unauthorized access attempt - no token", {
+    logger.debug("Protected route: no bearer token", {
       route: req.originalUrl,
-      ip: req.ip,
-      headers: req.headers, // Log headers to see what's being sent
+      method: req.method,
     });
     return next(new AppError("Not logged in.", 401));
   }
@@ -31,12 +81,12 @@ export const protect = asyncHandler(async (req, res, next) => {
   try {
     decoded = verifyJWT(token);
   } catch (err) {
-    logger.error(`JWT verification failed: ${err.message}`, { token }); // Log the token that failed
+    logger.error(`JWT verification failed: ${err.message}`);
     return next(new AppError("Invalid or expired token.", 401));
   }
 
   // Get user from Supabase using User model (returns camelCase)
-  const currentUser = await findUserById(decoded.userId);
+  const currentUser = await findUserById(decoded.userId, {}, getAuthClient());
 
   if (!currentUser) {
     logger.warn("Token used for non-existing user", { userId: decoded.userId });
@@ -57,6 +107,7 @@ export const protect = asyncHandler(async (req, res, next) => {
   }
 
   req.user = currentUser;
+  bindDatabaseIdentity(req, currentUser.id);
   res.locals.user = currentUser;
 
   next();
@@ -92,11 +143,15 @@ export const verifiedEmail = asyncHandler(async (req, res, next) => {
    TWO-FACTOR AUTH (uses Supabase user data)
    ======================================================================================= */
 export const twoFactorAuth = asyncHandler(async (req, res, next) => {
-  if (!req.user?.twoFactorEnabled || !req.user.twoFactorSecret) {
+  if (!req.user?.twoFactorEnabled) {
     return next();
   }
 
-  const twoFactorToken = req.headers["x-2fa-token"] || req.body.twoFactorToken;
+  if (!req.user.twoFactorSecret) {
+    return next(new AppError("Two-factor authentication is unavailable. Contact support.", 403));
+  }
+
+  const twoFactorToken = req.headers["x-2fa-token"] || req.body?.twoFactorToken || req.body?.token;
 
   if (!twoFactorToken) {
     return next(new AppError("2FA token required.", 401));

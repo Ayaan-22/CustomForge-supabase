@@ -28,7 +28,7 @@ export function WishlistButton({
       toast.success(
         isInWishlist ? "Removed from wishlist" : "Added to wishlist"
       );
-    } catch (error) {
+    } catch {
       toast.error("Failed to update wishlist. Please try again.");
     }
   };
@@ -42,6 +42,7 @@ export function WishlistButton({
         disabled={isLoading}
         className={className}
         aria-label={isInWishlist ? "Remove from wishlist" : "Add to wishlist"}
+        aria-pressed={isInWishlist}
       >
         <Heart
           className={`h-5 w-5 transition-colors ${
@@ -59,6 +60,7 @@ export function WishlistButton({
       variant={isInWishlist ? "default" : "outline"}
       onClick={handleClick}
       disabled={isLoading}
+      aria-pressed={isInWishlist}
       className={className}
     >
       <Heart className={`mr-2 h-4 w-4 ${isInWishlist ? "fill-current" : ""}`} />

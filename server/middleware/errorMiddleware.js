@@ -38,6 +38,7 @@ const sendErrorDev = (err, req, res) => {
   res.status(err.statusCode || 500).json({
     status: "error",
     message: err.message,
+    ...(err.code ? { code: err.code } : {}),
     stack: err.stack,
     details: err.details || null,
     error: err,
@@ -54,6 +55,7 @@ const sendErrorProd = (err, req, res) => {
     return res.status(err.statusCode).json({
       status: err.status,
       message: err.message,
+      ...(err.code ? { code: err.code } : {}),
     });
   }
 

@@ -1,12 +1,13 @@
 // server/utils/email.js
 import nodemailer from "nodemailer";
+import addressparser from "nodemailer/lib/addressparser/index.js";
 import pug from "pug";
-import { htmlToText } from "html-to-text";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import AppError from "./appError.js";
 import { logger } from "../middleware/logger.js";
+import { emailPlainText, orderEmailData, safeEmailUrl } from "./emailData.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,9 +17,10 @@ export default class Email {
     this.to = user.email;
     this.firstName = user.name?.split(" ")[0] || "User";
     this.url = url;
-    this.from = process.env.EMAIL_USERNAME
-      ? `Ayaan from GameShop <${process.env.EMAIL_USERNAME}>`
-      : process.env.EMAIL_FROM || "noreply@gameshop.com";
+    this.from = {
+      name: "CustomForge",
+      address: addressparser(process.env.EMAIL_FROM || process.env.EMAIL_USERNAME || '')[0]?.address,
+    };
     this.data = data;
   }
 
@@ -70,7 +72,10 @@ export default class Email {
       return nodemailer.createTransport({
         host,
         port,
+        disableFileAccess: true,
+        disableUrlAccess: true,
         secure: port === 465, // true for 465, false for other ports
+        requireTLS: port !== 465, // Never authenticate over a plaintext SMTP connection.
         auth: {
           user: EMAIL_USERNAME,
           pass: EMAIL_PASSWORD,
@@ -93,7 +98,7 @@ export default class Email {
     }
   }
 
-  async send(template, subject) {
+  async send(template, subject, data = {}) {
     try {
       const templatePath = path.join(
         __dirname,
@@ -112,10 +117,12 @@ export default class Email {
       let html;
       try {
         html = pug.renderFile(templatePath, {
-          firstName: this.firstName,
-          url: this.url,
-          subject,
           ...this.data,
+          ...data,
+          firstName: this.firstName,
+          url: safeEmailUrl(this.url),
+          subject,
+          year: new Date().getUTCFullYear(),
         });
       } catch (renderError) {
         logger.error("Email template rendering failed", {
@@ -135,11 +142,7 @@ export default class Email {
         to: this.to,
         subject,
         html,
-        text: htmlToText(html, {
-          wordwrap: 130,
-          ignoreImage: true,
-        }),
-        priority: "high",
+        text: emailPlainText(html),
       };
 
       // Create transport and send
@@ -206,28 +209,37 @@ export default class Email {
     }
   }
 
-  async sendWelcome() {
-    await this.send("welcome", "Welcome to the GameShop Family!");
+  async sendWelcome({ verifyEmail = false } = {}) {
+    await this.send("welcome", "Welcome to CustomForge — gear up", { verifyEmail });
   }
 
   async sendPasswordReset() {
     await this.send(
       "passwordReset",
-      "Your password reset token (valid for only 10 minutes)"
+      "Reset your CustomForge password"
     );
   }
 
   async sendOrderConfirmation(order) {
-    const orderId = order?.id || order?._id || order?.order_number || "N/A";
-    const totalPrice = order?.total_price || order?.totalPrice || "0.00";
-    await this.send("orderConfirmation", `Your GameShop Order #${orderId}`, {
-      order: order || {},
-      orderId,
-      totalPrice,
-    });
+    const data = orderEmailData(order);
+    await this.send("orderConfirmation", `CustomForge order #${data.shortOrderId} received`, data);
   }
 
   async sendVerificationEmail() {
-    await this.send("emailVerification", "Verify your GameShop account email");
+    await this.send("emailVerification", "Verify your CustomForge email");
+  }
+
+  // These templates are available for future post-commit notifications. They do
+  // not initiate cancellations, returns or refunds, or change payment state.
+  async sendOrderCancellation(order) {
+    if (order?.status !== 'cancelled') throw new AppError('Order cancellation is not confirmed', 500);
+    const data = orderEmailData(order);
+    await this.send('orderCancellation', `CustomForge order #${data.shortOrderId} cancelled`, data);
+  }
+
+  async sendReturnRequest(order) {
+    if ((order?.return_status ?? order?.returnStatus) !== 'requested') throw new AppError('Return request is not confirmed', 500);
+    const data = orderEmailData(order);
+    await this.send('returnRequest', `Return requested for CustomForge order #${data.shortOrderId}`, data);
   }
 }

@@ -1,7 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { AuthService } from "@/services/auth-service";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
+import { ShieldCheck, ArrowRight } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -13,13 +20,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Shield, Loader2, AlertCircle } from "lucide-react";
+import {
+  normalizeAuthenticationCode,
+  validAuthenticationCode,
+} from "@/lib/email-verification";
+import {
+  captureChallengeReturnFocus,
+  restoreChallengeReturnFocus,
+  type ChallengeReturnFocus,
+} from "@/lib/challenge-focus";
+import "@/app/forge-auth.css";
 
 type TwoFactorModalProps = {
   open: boolean;
   onClose: () => void;
   onSuccess: (token: string) => void;
+  onRestoreFocus?: (closingDialog: HTMLElement | null) => void;
   title?: string;
   description?: string;
 };
@@ -28,36 +44,44 @@ export function TwoFactorModal({
   open,
   onClose,
   onSuccess,
-  title = "Two-Factor Authentication Required",
-  description = "This action requires two-factor authentication. Please enter your 6-digit code.",
+  onRestoreFocus,
+  title = "Confirm it's you.",
+  description = "Enter your authenticator code to continue with this protected action.",
 }: TwoFactorModalProps) {
   const [code, setCode] = useState("");
-  const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const submitting = useRef(false);
+  const codeId = useId();
+  const codeRef = useRef<HTMLInputElement>(null);
+  const dialogElement = useRef<HTMLDivElement | null>(null);
 
-  const handleVerify = async () => {
-    if (!code || code.length !== 6) {
-      setError("Please enter a valid 6-digit code");
+  useEffect(() => {
+    if (!open) {
+      setCode("");
+      setError(null);
+      submitting.current = false;
+    }
+  }, [open]);
+
+  const handleContinue = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (submitting.current) return;
+    if (!validAuthenticationCode(code)) {
+      setError("Enter the six-digit code from your authenticator app.");
+      codeRef.current?.focus();
       return;
     }
-
-    setIsVerifying(true);
+    submitting.current = true;
     setError(null);
-
     try {
-      const response = await AuthService.verify2fa({ token: code });
-
-      if (response.error) {
-        setError(response.error.message || "Invalid code. Please try again.");
-      } else {
-        // Success - pass the code to the parent
-        onSuccess(code);
-        handleClose();
-      }
-    } catch (err) {
-      setError("An error occurred. Please try again.");
+      // The protected operation validates the code. Enrollment is not a challenge API.
+      onSuccess(code);
+      setCode("");
+    } catch {
+      setError("Unable to continue. Please try again.");
+      codeRef.current?.focus();
     } finally {
-      setIsVerifying(false);
+      submitting.current = false;
     }
   };
 
@@ -67,121 +91,152 @@ export function TwoFactorModal({
     onClose();
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleVerify();
-    }
-  };
-
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) handleClose();
+      }}
+    >
+      <DialogContent
+        ref={(element) => {
+          // Keep the closing element available after Radix removes its focus scope.
+          if (element) dialogElement.current = element;
+        }}
+        className="forge-auth-modal sm:max-w-md"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          codeRef.current?.focus();
+        }}
+        onCloseAutoFocus={(event) => {
+          if (!onRestoreFocus) return;
+          event.preventDefault();
+          onRestoreFocus(dialogElement.current);
+        }}
+      >
         <DialogHeader>
-          <div className="mx-auto mb-4 w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-            <Shield className="h-6 w-6 text-primary" />
+          <div className="forge-auth-modal-icon">
+            <ShieldCheck aria-hidden="true" />
           </div>
-          <DialogTitle className="text-center">{title}</DialogTitle>
-          <DialogDescription className="text-center">
-            {description}
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="2fa-code">Authentication Code</Label>
+        <form className="forge-auth-form" onSubmit={handleContinue} noValidate>
+          <div className="forge-auth-field">
+            <Label htmlFor={codeId}>Authenticator code</Label>
             <Input
-              id="2fa-code"
+              ref={codeRef}
+              id={codeId}
               type="text"
               inputMode="numeric"
-              pattern="[0-9]*"
+              autoComplete="one-time-code"
+              pattern="[0-9]{6}"
               maxLength={6}
+              required
               placeholder="000000"
               value={code}
-              onChange={(e) => {
-                const value = e.target.value.replace(/\D/g, "");
-                setCode(value);
+              onChange={(event) => {
+                setCode(normalizeAuthenticationCode(event.target.value));
                 setError(null);
               }}
-              onKeyPress={handleKeyPress}
-              className="text-center text-2xl tracking-widest font-mono"
-              autoFocus
-              disabled={isVerifying}
+              className="forge-auth-otp"
+              aria-invalid={Boolean(error)}
+              aria-describedby={
+                codeId + "-help" + (error ? " " + codeId + "-error" : "")
+              }
             />
-            <p className="text-xs text-muted-foreground text-center">
-              Enter the 6-digit code from your authenticator app
+            <p id={codeId + "-help"} className="forge-auth-field-help">
+              Use the current six-digit code from your authenticator app. The
+              protected action confirms it when you continue.
             </p>
+            {error && (
+              <p
+                id={codeId + "-error"}
+                role="alert"
+                className="forge-auth-field-error"
+              >
+                {error}
+              </p>
+            )}
           </div>
-
-          {error && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-        </div>
-
-        <DialogFooter className="sm:justify-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleClose}
-            disabled={isVerifying}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            onClick={handleVerify}
-            disabled={isVerifying || code.length !== 6}
-          >
-            {isVerifying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isVerifying ? "Verifying..." : "Verify"}
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={handleClose}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              className="forge-auth-submit"
+              disabled={!validAuthenticationCode(code)}
+            >
+              Continue <ArrowRight aria-hidden="true" />
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
 }
 
-// Hook for using the 2FA modal
+// Keep the bound component stable during a parent rerender so typing is preserved.
+// Only the open/closed boundary remounts the challenge and clears its credentials.
 export function useTwoFactorModal() {
   const [isOpen, setIsOpen] = useState(false);
-  const [resolveCallback, setResolveCallback] = useState<
-    ((token: string | null) => void) | null
-  >(null);
+  const resolveCallback = useRef<((token: string | null) => void) | null>(null);
+  const returnFocus = useRef<ChallengeReturnFocus | null>(null);
 
-  const requestTwoFactor = (): Promise<string | null> => {
-    return new Promise((resolve) => {
-      setResolveCallback(() => resolve);
-      setIsOpen(true);
-    });
-  };
+  const requestTwoFactor = useCallback(
+    (fallback?: HTMLElement | null): Promise<string | null> => {
+      if (resolveCallback.current) return Promise.resolve(null);
+      returnFocus.current =
+        typeof document === "undefined"
+          ? null
+          : captureChallengeReturnFocus(document, fallback);
+      return new Promise((resolve) => {
+        resolveCallback.current = resolve;
+        setIsOpen(true);
+      });
+    },
+    [],
+  );
 
-  const handleSuccess = (token: string) => {
-    if (resolveCallback) {
-      resolveCallback(token);
-      setResolveCallback(null);
-    }
+  const handleSuccess = useCallback((token: string) => {
+    const resolve = resolveCallback.current;
+    resolveCallback.current = null;
     setIsOpen(false);
-  };
+    resolve?.(token);
+  }, []);
 
-  const handleClose = () => {
-    if (resolveCallback) {
-      resolveCallback(null);
-      setResolveCallback(null);
-    }
+  const handleClose = useCallback(() => {
+    const resolve = resolveCallback.current;
+    resolveCallback.current = null;
     setIsOpen(false);
-  };
+    resolve?.(null);
+  }, []);
 
-  return {
-    isOpen,
-    requestTwoFactor,
-    TwoFactorModal: () => (
+  useEffect(
+    () => () => {
+      resolveCallback.current?.(null);
+      resolveCallback.current = null;
+      returnFocus.current = null;
+    },
+    [],
+  );
+
+  const BoundTwoFactorModal = useCallback(() => {
+    // Bind this opening's target; an older close cannot consume a newer challenge.
+    const snapshot = returnFocus.current;
+    return (
       <TwoFactorModal
         open={isOpen}
         onClose={handleClose}
         onSuccess={handleSuccess}
+        onRestoreFocus={(closingDialog) => {
+          if (returnFocus.current === snapshot) returnFocus.current = null;
+          if (snapshot) restoreChallengeReturnFocus(snapshot, closingDialog);
+        }}
       />
-    ),
-  };
+    );
+  }, [isOpen, handleClose, handleSuccess]);
+
+  return { isOpen, requestTwoFactor, TwoFactorModal: BoundTwoFactorModal };
 }

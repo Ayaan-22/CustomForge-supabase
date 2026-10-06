@@ -1,4 +1,5 @@
 // File: server/routes/paymentRoutes.js
+// Mount: /api/v1/payment — all routes here require auth (Stripe webhook is on app in server.js).
 import express from "express";
 import {
   processPayment,
@@ -10,12 +11,13 @@ import {
   createPayPalOrder,
   capturePayPalOrder,
 } from "../controllers/paymentController.js";
-import { protect } from "../middleware/authMiddleware.js";
+import { protect, verifiedEmail } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// All payment routes require authentication
+// Authenticated payment APIs (Stripe webhook is mounted on app.js, not this router).
 router.use(protect);
+router.use(verifiedEmail);
 
 /**
  * PROCESS PAYMENT (STRIPE / PAYPAL / COD)

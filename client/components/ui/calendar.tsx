@@ -6,10 +6,24 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
 } from 'lucide-react'
-import { DayButton, DayPicker, getDefaultClassNames } from 'react-day-picker'
+import {
+  DayButton,
+  DayPicker,
+  Dropdown as DayPickerDropdown,
+  getDefaultClassNames,
+  useDayPicker,
+  type DropdownProps,
+} from 'react-day-picker'
 
 import { cn } from '@/lib/utils'
 import { Button, buttonVariants } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 function Calendar({
   className,
@@ -62,11 +76,12 @@ function Calendar({
           defaultClassNames.button_next,
         ),
         month_caption: cn(
-          'flex items-center justify-center h-(--cell-size) w-full px-(--cell-size)',
+          'flex items-center justify-center w-full px-(--cell-size)',
+          captionLayout === 'label' ? 'h-(--cell-size)' : 'min-h-11',
           defaultClassNames.month_caption,
         ),
         dropdowns: cn(
-          'w-full flex items-center text-sm font-medium justify-center h-(--cell-size) gap-1.5',
+          'w-full flex items-center text-sm font-medium justify-center min-h-11 gap-1.5',
           defaultClassNames.dropdowns,
         ),
         dropdown_root: cn(
@@ -156,6 +171,11 @@ function Calendar({
           )
         },
         DayButton: CalendarDayButton,
+        // Explicit legacy Select/Option overrides still use DayPicker's renderer.
+        Dropdown:
+          components?.Select || components?.Option
+            ? DayPickerDropdown
+            : CalendarDropdown,
         WeekNumber: ({ children, ...props }) => {
           return (
             <td {...props}>
@@ -169,6 +189,76 @@ function Calendar({
       }}
       {...props}
     />
+  )
+}
+
+/** Uses the shared menu skin while retaining DayPicker's month/year value contract. */
+function CalendarDropdown({
+  options = [],
+  value,
+  defaultValue,
+  onChange,
+  disabled,
+  name,
+  required,
+  id,
+  style,
+  className,
+  tabIndex,
+  autoFocus,
+  'aria-label': ariaLabel,
+  'aria-labelledby': labelledBy,
+  'aria-describedby': describedBy,
+}: DropdownProps) {
+  const { dayPickerProps } = useDayPicker()
+
+  return (
+    <Select
+      value={value === undefined ? undefined : String(value)}
+      defaultValue={defaultValue === undefined ? undefined : String(defaultValue)}
+      disabled={disabled}
+      name={name}
+      required={required}
+      dir={
+        dayPickerProps.dir === 'rtl' || dayPickerProps.dir === 'ltr'
+          ? dayPickerProps.dir
+          : undefined
+      }
+      onValueChange={(nextValue) => {
+        // DayPicker's navigation handlers read target.value; a Radix selection
+        // supplies that same string without changing its date calculations.
+        const target = { value: nextValue }
+        onChange?.({
+          target,
+          currentTarget: target,
+        } as React.ChangeEvent<HTMLSelectElement>)
+      }}
+    >
+      <SelectTrigger
+        id={id}
+        className={cn('w-fit', className)}
+        style={style}
+        tabIndex={tabIndex}
+        autoFocus={autoFocus}
+        aria-label={ariaLabel}
+        aria-labelledby={labelledBy}
+        aria-describedby={describedBy}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent aria-label={ariaLabel} aria-labelledby={labelledBy}>
+        {options.map((option) => (
+          <SelectItem
+            key={option.value}
+            value={String(option.value)}
+            disabled={option.disabled}
+            textValue={option.label}
+          >
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 

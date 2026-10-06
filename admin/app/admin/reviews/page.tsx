@@ -1,9 +1,22 @@
 "use client";
+import "../forge-operations.css";
+import {useUrlState} from "@/hooks/use-url-state";
+import {useAdminMutation} from "@/hooks/use-admin-mutation";
+import { useConfirmation } from "@/hooks/use-confirmation";
 
-import { useState, useMemo, useEffect } from "react";
-import { Search, Star, Eye, Trash2 } from "lucide-react";
+import {useAdminQuery} from '@/hooks/use-admin-query';
+import {useDebouncedValue} from '@/hooks/use-debounced-value';
+import {QueryError} from '@/components/patterns/query-error';
+import {Pagination} from '@/components/patterns/pagination';
+import { useState } from "react";
+import { Search, Star, Eye, Trash2, MessageSquare, BadgeCheck, Flag, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SectionHeader } from "@/components/patterns/section-header";
+import { PageShell } from "@/components/patterns/page-shell";
+import { ActionBar } from "@/components/patterns/action-bar";
+import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/patterns/empty-state";
 import {
   Select,
   SelectContent,
@@ -43,61 +56,23 @@ interface Review {
 
 export default function ReviewsPage() {
   const { toast } = useToast();
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [ratingFilter, setRatingFilter] = useState<string>("all");
-  const [reportedFilter, setReportedFilter] = useState<string>("all");
+  const runMutation = useAdminMutation();
+  const { confirm, confirmationDialog } = useConfirmation();
+  const [searchTerm, setSearchTerm] = useUrlState("searchTerm", "");
+  const [ratingFilter, setRatingFilter] = useUrlState("ratingFilter", "all");
+  const [reportedFilter, setReportedFilter] = useUrlState("reportedFilter", "all");
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
 
-  const fetchReviews = async () => {
-    setLoading(true);
-    try {
-      const response = await apiClient.getReviews();
-      // Handle both wrapped and unwrapped responses
-      const data = response.data || response;
-      setReviews(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error("Failed to fetch reviews:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch reviews",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [page, setPage] = useUrlState("page", 1);
+  const search = useDebouncedValue(searchTerm);
+  const filters = {page, limit: 20, search, ...(ratingFilter !== 'all' ? {rating: ratingFilter} : {}), ...(reportedFilter !== 'all' ? {reported: String(reportedFilter === 'reported')} : {})};
+  const listQuery = useAdminQuery(['reviews', filters], () => apiClient.getReviews(filters));
+  const reviews: Review[] = listQuery.data?.data ?? [];
+  const filteredReviews = reviews;
+  const loading = listQuery.isLoading;
+  const fetchReviews = () => {void listQuery.refetch();};
 
-  useEffect(() => {
-    fetchReviews();
-  }, []);
-
-  const filteredReviews = useMemo(() => {
-    if (!reviews || !Array.isArray(reviews)) return [];
-
-    return reviews.filter((review) => {
-      const matchesSearch =
-        review.product_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        review.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        review.comment.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        review.product?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        review.user?.name.toLowerCase().includes(searchTerm.toLowerCase());
-
-      const matchesRating =
-        ratingFilter === "all" ||
-        review.rating === Number.parseInt(ratingFilter);
-      const matchesReported =
-        reportedFilter === "all" ||
-        (reportedFilter === "not-reported" && !review.reported) ||
-        (reportedFilter === "reported" && review.reported);
-
-      const matchesActive = review.is_active;
-
-      return matchesSearch && matchesRating && matchesReported && matchesActive;
-    });
-  }, [reviews, searchTerm, ratingFilter, reportedFilter]);
 
   const stats = {
     total: reviews?.length || 0,
@@ -119,9 +94,9 @@ export default function ReviewsPage() {
   };
 
   const handleDeleteReview = async (reviewId: string) => {
-    if (confirm("Are you sure you want to delete this review?")) {
+    if (await confirm({ title: "Delete review?", description: "Are you sure you want to delete this review?", confirmLabel: "Delete review" })) {
       try {
-        await apiClient.deleteReview(reviewId);
+        await runMutation(() => apiClient.deleteReview(reviewId));
         toast({ title: "Success", description: "Review deleted successfully" });
         fetchReviews();
       } catch (err: any) {
@@ -136,113 +111,47 @@ export default function ReviewsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-white mb-2">
-          Reviews Management
-        </h1>
-        <p className="text-[#A0A0A8]">Manage and moderate product reviews</p>
+    <PageShell className="fo-page">
+      <SectionHeader eyebrow="Community trust" title="Review moderation" description="Review customer feedback, investigate reports and keep product conversations useful." icon={<MessageSquare />} />
+      <QueryError error={listQuery.error} retry={fetchReviews} />
+      <div className="fo-stats fo-stats-five" aria-label="Reviews on the current page">
+        {[{label: "Reviews", value: stats.total, icon: MessageSquare}, {label: "Verified purchases", value: stats.verified, icon: BadgeCheck}, {label: "Reported", value: stats.reported, icon: Flag}, {label: "With media", value: stats.withMedia, icon: ImageIcon}, {label: "Average rating", value: stats.averageRating, icon: Star}].map(({label, value, icon: Icon}) => <div className="fo-stat" key={label}><div className="fo-stat-head"><p className="fo-stat-label">{label}</p><Icon className="fo-stat-icon" aria-hidden="true" /></div><p className="fo-stat-value">{loading ? "—" : value}</p><p className="fo-stat-note">On this results page</p></div>)}
       </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="bg-gradient-to-br from-[#1A1A24] to-[#0F0F14] border border-[#2A2A35] rounded-lg p-4">
-          <p className="text-[#A0A0A8] text-sm mb-2">Total Reviews</p>
-          <p className="text-2xl font-bold text-white">{stats.total}</p>
-        </div>
-        <div className="bg-gradient-to-br from-[#1A1A24] to-[#0F0F14] border border-[#2A2A35] rounded-lg p-4">
-          <p className="text-[#A0A0A8] text-sm mb-2">Verified</p>
-          <p className="text-2xl font-bold text-green-400">{stats.verified}</p>
-        </div>
-        <div className="bg-gradient-to-br from-[#1A1A24] to-[#0F0F14] border border-[#2A2A35] rounded-lg p-4">
-          <p className="text-[#A0A0A8] text-sm mb-2">Reported</p>
-          <p className="text-2xl font-bold text-red-400">{stats.reported}</p>
-        </div>
-        <div className="bg-gradient-to-br from-[#1A1A24] to-[#0F0F14] border border-[#2A2A35] rounded-lg p-4">
-          <p className="text-[#A0A0A8] text-sm mb-2">With Media</p>
-          <p className="text-2xl font-bold text-blue-400">{stats.withMedia}</p>
-        </div>
-        <div className="bg-gradient-to-br from-[#1A1A24] to-[#0F0F14] border border-[#2A2A35] rounded-lg p-4">
-          <p className="text-[#A0A0A8] text-sm mb-2">Avg Rating</p>
-          <div className="flex items-center gap-2">
-            <p className="text-2xl font-bold text-white">
-              {stats.averageRating}
-            </p>
-            <Star className="w-5 h-5 text-yellow-400 fill-yellow-400" />
-          </div>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-gradient-to-br from-[#1A1A24] to-[#0F0F14] border border-[#2A2A35] rounded-lg p-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-3 w-4 h-4 text-[#A0A0A8]" />
-            <Input
-              placeholder="Search by product, title, or comment..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 bg-[#0F0F14] border-[#2A2A35] text-white placeholder-[#A0A0A8]"
-            />
-          </div>
-          <Select value={ratingFilter} onValueChange={setRatingFilter}>
-            <SelectTrigger className="bg-[#0F0F14] border-[#2A2A35] text-white">
-              <SelectValue placeholder="Filter by rating" />
-            </SelectTrigger>
-            <SelectContent className="bg-[#1A1A24] border-[#2A2A35]">
-              <SelectItem value="all">All Ratings</SelectItem>
-              <SelectItem value="5">5 Stars</SelectItem>
-              <SelectItem value="4">4 Stars</SelectItem>
-              <SelectItem value="3">3 Stars</SelectItem>
-              <SelectItem value="2">2 Stars</SelectItem>
-              <SelectItem value="1">1 Star</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={reportedFilter} onValueChange={setReportedFilter}>
-            <SelectTrigger className="bg-[#0F0F14] border-[#2A2A35] text-white">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent className="bg-[#1A1A24] border-[#2A2A35]">
-              <SelectItem value="all">All Reviews</SelectItem>
-              <SelectItem value="not-reported">Not Reported</SelectItem>
-              <SelectItem value="reported">Reported</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
+      <ActionBar className="fo-toolbar" layout="filters">
+        <div className="fo-field"><label htmlFor="reviews-search">Search feedback</label><div className="fo-search"><Search aria-hidden="true" /><Input id="reviews-search" placeholder="Title or comment…" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div></div>
+        <div className="fo-field"><label htmlFor="reviews-rating">Rating</label><Select value={ratingFilter} onValueChange={setRatingFilter}><SelectTrigger id="reviews-rating"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All ratings</SelectItem>{[5,4,3,2,1].map((rating) => <SelectItem key={rating} value={String(rating)}>{rating} {rating === 1 ? "star" : "stars"}</SelectItem>)}</SelectContent></Select></div>
+        <div className="fo-field"><label htmlFor="reviews-status">Report status</label><Select value={reportedFilter} onValueChange={setReportedFilter}><SelectTrigger id="reviews-status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All reviews</SelectItem><SelectItem value="not-reported">Not reported</SelectItem><SelectItem value="reported">Reported</SelectItem></SelectContent></Select></div>
+      </ActionBar>
       {/* Reviews Table */}
-      <div className="bg-gradient-to-br from-[#1A1A24] to-[#0F0F14] border border-[#2A2A35] rounded-lg overflow-hidden">
+      <Card className="fa-panel fa-results-panel">
+        <div className="fa-panel-heading"><div><h2>Review queue</h2><p>Inspect purchase verification, helpful votes and reports.</p></div><span className="fo-count">{listQuery.data?.count ?? reviews.length} reviews</span></div>
         {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500"></div>
-          </div>
+          <div className="fo-loading" role="status" aria-label="Loading reviews"><span className="fo-loading-label">Loading review queue…</span>{[0,1,2].map((row) => <div key={row} className="fo-loading-bar" />)}</div>
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <div className="fa-table-scroll" role="region" aria-label="Review moderation" tabIndex={0}>
+              <table className="fa-data-table fo-table" aria-label="Product reviews">
                 <thead>
-                  <tr className="border-b border-[#2A2A35]">
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-[#A0A0A8]">
+                  <tr className="border-b border-border">
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-muted-foreground">
                       Product
                     </th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-[#A0A0A8]">
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-muted-foreground">
                       Rating
                     </th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-[#A0A0A8]">
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-muted-foreground">
                       Title
                     </th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-[#A0A0A8]">
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-muted-foreground">
                       Verified
                     </th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-[#A0A0A8]">
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-muted-foreground">
                       Helpful
                     </th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-[#A0A0A8]">
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-muted-foreground">
                       Status
                     </th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-[#A0A0A8]">
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-muted-foreground">
                       Actions
                     </th>
                   </tr>
@@ -251,68 +160,62 @@ export default function ReviewsPage() {
                   {filteredReviews.map((review) => (
                     <tr
                       key={review.id}
-                      className="border-b border-[#2A2A35] hover:bg-[#1A1A24]/50 transition-colors"
+                      className="border-b border-border hover:bg-muted/50 transition-colors"
                     >
-                      <td className="px-6 py-4 text-sm text-white font-mono">
-                        {review.product?.name || review.product_id.slice(0, 8)}
+                      <td className="px-6 py-4 text-sm text-foreground">
+                        <span className={review.product?.name ? undefined : "font-mono text-xs"}>{review.product?.name || review.product_id.slice(0, 8)}</span>
                       </td>
                       <td className="px-6 py-4 text-sm">
-                        <div className="flex items-center gap-1">
+                        <div className="fo-rating" role="img" aria-label={`${review.rating} out of 5 stars`}>
                           {Array.from({ length: 5 }).map((_, i) => (
                             <Star
                               key={i}
                               className={`w-4 h-4 ${
                                 i < review.rating
-                                  ? "text-yellow-400 fill-yellow-400"
-                                  : "text-[#2A2A35]"
+                                  ? "text-[var(--fa-warning)] fill-current"
+                                  : "text-muted-foreground/40"
                               }`}
                             />
                           ))}
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-white truncate max-w-xs">
+                      <td className="px-6 py-4 text-sm text-foreground truncate max-w-xs">
                         {review.title}
                       </td>
                       <td className="px-6 py-4 text-sm">
                         <span
-                          className={`px-2 py-1 rounded text-xs font-medium ${
-                            review.verified_purchase
-                              ? "bg-green-500/10 text-green-400"
-                              : "bg-gray-500/10 text-gray-400"
-                          }`}
+                          className={`fa-status ${review.verified_purchase ? "is-success" : "is-neutral"}`}
                         >
                           {review.verified_purchase ? "Yes" : "No"}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-sm text-white">
+                      <td className="px-6 py-4 text-sm text-foreground">
                         {review.helpful_votes}
                       </td>
                       <td className="px-6 py-4 text-sm">
                         <span
-                          className={`px-2 py-1 rounded text-xs font-medium ${
-                            review.reported
-                              ? "bg-red-500/10 text-red-400"
-                              : "bg-green-500/10 text-green-400"
-                          }`}
+                          className={`fa-status ${review.reported ? "is-danger" : review.is_active ? "is-success" : "is-neutral"}`}
                         >
-                          {review.reported ? "Reported" : "Active"}
+                          {review.reported ? "Reported" : review.is_active ? "Active" : "Inactive"}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-sm">
-                        <div className="flex items-center gap-2">
+                        <div className="fo-actions">
                           <Button
-                            size="sm"
-                            variant="ghost"
+                            size="icon"
+                            variant="outline"
+                            aria-label={`View review: ${review.title}`}
                             onClick={() => handleViewDetails(review)}
-                            className="text-blue-400 hover:bg-blue-500/10"
+                            className="size-11"
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
                           <Button
-                            size="sm"
-                            variant="ghost"
+                            size="icon"
+                            variant="outline"
+                            aria-label={`Delete review: ${review.title}`}
                             onClick={() => handleDeleteReview(review.id)}
-                            className="text-red-400 hover:bg-red-500/10"
+                            className="size-11 fo-danger"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -325,14 +228,12 @@ export default function ReviewsPage() {
             </div>
 
             {filteredReviews.length === 0 && (
-              <div className="text-center py-12">
-                <p className="text-[#A0A0A8]">No reviews found</p>
-              </div>
+              <EmptyState className="m-5" icon={<MessageSquare />} title="No reviews to show" description="Change your search or filters to explore more feedback." />
             )}
           </>
         )}
-      </div>
-
+        {!loading && (listQuery.data?.count ?? reviews.length) > 0 && <Pagination page={page} pages={listQuery.data?.pages ?? 1} pending={listQuery.isFetching} onPage={setPage} total={listQuery.data?.count ?? reviews.length} pageSize={20} noun="reviews" />}
+      </Card>
       {/* Review Details Modal */}
       {selectedReview && (
         <ReviewDetailsModal
@@ -341,10 +242,10 @@ export default function ReviewsPage() {
           onOpenChange={setShowDetailsModal}
           onModerate={async (id, action) => {
             try {
-              await apiClient.moderateReview(id, { action });
+              await runMutation(() => apiClient.moderateReview(id, { action }));
               toast({
                 title: "Success",
-                description: `Review ${action}ed successfully`,
+                description: action === "approve" ? "Review approved successfully" : "Review rejected successfully",
               });
               setShowDetailsModal(false);
               fetchReviews();
@@ -358,6 +259,7 @@ export default function ReviewsPage() {
           }}
         />
       )}
-    </div>
+      {confirmationDialog}
+    </PageShell>
   );
 }

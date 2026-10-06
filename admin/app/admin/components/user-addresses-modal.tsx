@@ -1,97 +1,83 @@
-"use client"
+"use client";
+import "../forge-operations.css";
+import { useRef } from "react";
 
-import { useEffect, useState } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Card } from "@/components/ui/card"
-import { MapPin, Check } from "lucide-react"
-
-interface Address {
-  id: string
-  userId: string
-  label: string
-  fullName: string
-  address: string
-  city: string
-  state: string
-  postalCode: string
-  country: string
-  phoneNumber: string
-  isDefault: boolean
-}
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { MapPin, Check } from "lucide-react";
+import { useAdminUserDetail } from "@/hooks/api/use-admin-user-detail";
+import type { AdminUserAddress } from "@/types/admin";
 
 interface UserAddressesModalProps {
-  isOpen: boolean
-  onClose: () => void
-  user: any
+  isOpen: boolean;
+  onClose: () => void;
+  user: { id?: string; name?: string } | null;
 }
 
 export function UserAddressesModal({ isOpen, onClose, user }: UserAddressesModalProps) {
-  const [addresses, setAddresses] = useState<Address[]>([])
-  const [loading, setLoading] = useState(false)
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const userId = user?.id;
+  const { data, isPending, isError, error } = useAdminUserDetail(userId, isOpen);
 
-  useEffect(() => {
-    if (isOpen && user?.id) {
-      loadAddresses()
-    }
-  }, [isOpen, user?.id])
-
-  const loadAddresses = async () => {
-    setLoading(true)
-    try {
-      const data = await fetch("/mock/user-addresses.json").then((res) => res.json())
-      const userAddresses = (data.addresses || data).filter((a: Address) => a.userId === user?.id)
-      setAddresses(userAddresses)
-    } catch (error) {
-      console.error("Failed to load addresses:", error)
-      setAddresses([])
-    } finally {
-      setLoading(false)
-    }
-  }
+  const addresses: AdminUserAddress[] = data?.addresses ?? [];
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl bg-[#1F1F28] border-[#2A2A35]">
+      <DialogContent className="fo-modal"
+        onOpenAutoFocus={() => { returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }}
+        onCloseAutoFocus={(event) => { event.preventDefault(); returnFocusRef.current?.focus(); }}
+      >
         <DialogHeader>
-          <DialogTitle className="text-white flex items-center gap-2">
-            <MapPin className="w-5 h-5 text-blue-400" />
-            Addresses - {user?.name}
+          <DialogTitle className="text-foreground flex items-center gap-2">
+            <MapPin className="w-5 h-5 text-primary" />
+            Addresses — {user?.name ?? "User"}
           </DialogTitle>
+          <DialogDescription>Shipping details saved by this account.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          {loading ? (
-            <p className="text-[#A0A0A8]">Loading addresses...</p>
+          {isPending ? (
+            <div className="space-y-3">
+              <Skeleton className="h-24 w-full bg-muted" />
+              <Skeleton className="h-24 w-full bg-muted" />
+            </div>
+          ) : isError ? (
+            <p className="fo-error-note" role="alert">
+              {error instanceof Error ? error.message : "Failed to load addresses"}
+            </p>
           ) : addresses.length > 0 ? (
             addresses.map((address) => (
-              <Card key={address.id} className="glass-dark p-4 border-[#2A2A35]">
+              <Card key={address.id} className="fo-record-card">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <h4 className="text-white font-semibold">{address.label}</h4>
+                      <h4 className="text-foreground font-semibold">{address.label}</h4>
                       {address.isDefault && (
-                        <span className="flex items-center gap-1 bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded">
+                        <span className="flex items-center gap-1 fa-status is-success">
                           <Check className="w-3 h-3" />
                           Default
                         </span>
                       )}
                     </div>
-                    <p className="text-[#A0A0A8] text-sm mb-1">{address.fullName}</p>
-                    <p className="text-[#A0A0A8] text-sm mb-1">{address.address}</p>
-                    <p className="text-[#A0A0A8] text-sm mb-1">
+                    <p className="text-muted-foreground text-sm mb-1">{address.fullName}</p>
+                    <p className="text-muted-foreground text-sm mb-1">{address.address}</p>
+                    <p className="text-muted-foreground text-sm mb-1">
                       {address.city}, {address.state} {address.postalCode}
                     </p>
-                    <p className="text-[#A0A0A8] text-sm mb-1">{address.country}</p>
-                    <p className="text-[#A0A0A8] text-sm">{address.phoneNumber}</p>
+                    <p className="text-muted-foreground text-sm mb-1">{address.country}</p>
+                    {address.phoneNumber ? (
+                      <p className="text-muted-foreground text-sm">{address.phoneNumber}</p>
+                    ) : null}
                   </div>
                 </div>
               </Card>
             ))
           ) : (
-            <p className="text-[#A0A0A8]">No addresses found for this user.</p>
+            <div className="fo-empty-record" role="status"><MapPin aria-hidden="true" /><p>No addresses on file for this user.</p></div>
           )}
         </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

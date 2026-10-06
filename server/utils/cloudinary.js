@@ -1,7 +1,7 @@
 // utils/cloudinary.js
 import { v2 as cloudinary } from "cloudinary";
 
-import { PassThrough } from "stream";
+import AppError from "./appError.js";
 
 const cloud_name = process.env.CLOUDINARY_CLOUD_NAME;
 const api_key = process.env.CLOUDINARY_API_KEY;
@@ -22,25 +22,9 @@ if (isConfigValid) {
     api_secret,
   });
 } else {
-  console.warn(
-    "⚠️ Cloudinary credentials missing or invalid. Using mock uploader."
-  );
-  // Mock uploader
-  cloudinary.uploader = {
-    upload_stream: (options, callback) => {
-      const stream = new PassThrough();
-      // Simulate async upload completion
-      setTimeout(() => {
-        const mockUrl = `https://placehold.co/600x400?text=Mock+Image+${Date.now()}`;
-        callback(null, { secure_url: mockUrl });
-      }, 100);
-      return stream;
-    },
-    destroy: (public_id, callback) => {
-      if (callback) callback(null, { result: "ok" });
-      return Promise.resolve({ result: "ok" });
-    },
-  };
+  // Missing infrastructure must never create pretend production image records.
+  cloudinary.uploader.upload_stream = () => { throw new AppError("Image uploads are unavailable. Configure Cloudinary before uploading.", 503); };
+  cloudinary.uploader.destroy = async () => { throw new AppError("Image storage is unavailable.", 503); };
 }
 
 export default cloudinary;

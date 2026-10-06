@@ -1,262 +1,364 @@
 "use client";
-
-import { useEffect, useState } from "react";
-import { useParams, notFound } from "next/navigation";
-import type { Product } from "@/lib/types";
-import { ProductGallery } from "@/components/product-gallery";
-import { RatingStars } from "@/components/rating-stars";
-import { finalPrice, formatPrice } from "@/lib/format";
+import { useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+import {
+  ArrowRight,
+  ChevronRight,
+  ShoppingBag,
+  ShieldCheck,
+  Package,
+  Minus,
+  Plus,
+  Check,
+} from "lucide-react";
+import { ProductService } from "@/services/product-service";
+import { requireSuccess } from "@/lib/query-result";
+import { formatPrice, finalPrice } from "@/lib/format";
+import { useCart } from "@/hooks/use-cart";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ProductCard } from "@/components/product-card";
-import { apiFetch } from "@/lib/apiClient";
-import { useCart } from "@/hooks/use-cart";
-import { useIsInWishlist, useToggleWishlist } from "@/hooks/use-wishlist";
-import { Heart, ShoppingCart, Check } from "lucide-react";
-import { toast } from "sonner";
+import { WishlistButton } from "@/components/wishlist-button";
+import { ReviewList } from "@/components/review-list";
+import { MyProductReview } from "@/components/my-product-review";
+import { RatingStars } from "@/components/rating-stars";
+import { ProductGrid } from "@/components/product-grid";
+import { ProductExtraDetails } from "@/components/product-extra-details";
+import { ProductCardEmpty, ProductCardError } from "@/components/product-card";
+import { ProductMedia } from "@/components/forge/product-media";
+import { CompareButton } from "@/components/forge/compare-button";
+import { CompatibilityPanel } from "@/components/forge/compatibility-panel";
+import { ProductFAQ } from "@/components/forge/product-faq";
+import { Reveal } from "@/components/forge/experience";
+import { announceCartAddition } from "@/components/forge/mini-cart";
+import { ProductSections } from "@/components/forge/product-sections";
+import { getProductHighlights } from "@/lib/product-highlights";
+import {
+  ProductSetupGuide,
+  ProductStory,
+  ProductSupport,
+} from "@/components/forge/product-story";
+import { ProductComplements } from "@/components/forge/product-complements";
+import "@/app/forge-product-depth.css";
 
 export default function ProductPage() {
-  const params = useParams();
-  const id = params.id as string;
-  const [product, setProduct] = useState<Product | null>(null);
-  const [related, setRelated] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [notFoundState, setNotFoundState] = useState(false);
-  const { addItem: addToCart } = useCart();
-  const isInWishlist = useIsInWishlist(id);
-  const { toggle: toggleWishlist, isLoading: wishlistLoading } =
-    useToggleWishlist();
-  const [addedToCart, setAddedToCart] = useState(false);
-
-  useEffect(() => {
-    async function loadProduct() {
-      setLoading(true);
-      console.log("[v0] ProductPage: Fetching product", id);
-      const res = await apiFetch<Product>(`/products/${id}`);
-      console.log("[v0] ProductPage: Response:", res);
-
-      if (res.error || !res.data) {
-        setNotFoundState(true);
-        setLoading(false);
-        return;
-      }
-
-      const prod = res.data;
-      console.log("[v0] Product data:", prod);
-      console.log("[v0] Specifications:", prod.specifications);
-      console.log("[v0] Features:", prod.features);
-      console.log("[v0] All product keys:", Object.keys(prod));
-      setProduct(prod);
-
-      // Load related products
-      const relRes = await apiFetch<Product[]>(`/products/${id}/related`);
-      if (relRes.data) {
-        setRelated(relRes.data);
-      }
-
-      setLoading(false);
-    }
-    loadProduct();
-  }, [id]);
-
-  if (notFoundState) {
-    return notFound();
-  }
-
-  if (loading) {
+  const id = useParams().id as string;
+  const { addToCart, isPending } = useCart();
+  const [quantity, setQuantity] = useState(1);
+  const [added, setAdded] = useState(false);
+  const query = useQuery({
+    queryKey: ["products", id],
+    queryFn: async () => {
+      const response = await ProductService.get(id);
+      if (response.error?.status === 404)
+        return { ...response, data: null, error: null };
+      return requireSuccess(response);
+    },
+  });
+  const related = useQuery({
+    queryKey: ["products", id, "related"],
+    queryFn: () => ProductService.related(id).then(requireSuccess),
+    enabled: !!query.data?.data,
+  });
+  if (query.isLoading)
     return (
-      <div className="container mx-auto px-4 py-6">
-        <div className="grid gap-8 md:grid-cols-2">
-          <Skeleton className="aspect-square w-full rounded-lg" />
-          <div className="space-y-4">
-            <Skeleton className="h-10 w-3/4" />
-            <Skeleton className="h-6 w-1/2" />
-            <Skeleton className="h-8 w-1/3" />
-            <Skeleton className="h-24 w-full" />
+      <div className="forge-container forge-product-detail" aria-busy="true">
+        <div className="forge-detail-layout">
+          <Skeleton className="aspect-square" />
+          <div className="space-y-5">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-8 w-2/3" />
+            <Skeleton className="h-64 w-full" />
           </div>
         </div>
       </div>
     );
-  }
-
-  if (!product) return null;
-
-  const price = finalPrice(product.originalPrice, product.discountPercentage);
-
-  const handleAddToCart = () => {
-    addToCart(product);
-    setAddedToCart(true);
-    setTimeout(() => setAddedToCart(false), 2000);
-  };
-
-  const handleWishlistToggle = async () => {
+  if (query.isError)
+    return (
+      <div className="forge-container py-12">
+        <ProductCardError
+          message={query.error.message}
+          onRetry={() => query.refetch()}
+        />
+      </div>
+    );
+  const product = query.data?.data;
+  if (!product)
+    return (
+      <div className="forge-container py-12">
+        <ProductCardEmpty
+          title="This upgrade is off the grid."
+          description="The product is unavailable or has been removed. Explore the rest of the catalog."
+        />
+      </div>
+    );
+  const price =
+    product.finalPrice ??
+    finalPrice(product.originalPrice, product.discountPercentage);
+  const unavailable = product.availability === "Out of Stock";
+  const specs = product.specifications?.filter((s) => s.key && s.value) ?? [];
+  const highlights = getProductHighlights(product);
+  const demo =
+    product.sku.startsWith("CF-DEMO-") || /\(Demo\)/i.test(product.name);
+  async function add() {
+    if (!product) return;
     try {
-      await toggleWishlist(id, isInWishlist);
-      toast.success(
-        isInWishlist ? "Removed from wishlist" : "Added to wishlist"
-      );
-    } catch (error) {
-      toast.error("Failed to update wishlist");
+      await addToCart(product, quantity);
+      setAdded(true);
+      announceCartAddition();
+    } catch {
+      /* Existing cart hook reports failures. */
     }
-  };
-
+  }
   return (
-    <div className="container mx-auto px-4 py-6">
-      <div className="grid gap-8 md:grid-cols-2">
-        <ProductGallery images={product.images} />
+    <div className="forge-container forge-product-detail">
+      <div className="forge-mobile-buybar">
         <div>
-          <h1 className="font-heading text-3xl">{product.name}</h1>
-          <div className="mt-2 text-muted-foreground">
-            {product.brand} • {product.category} • SKU: {product.sku}
-          </div>
-          <div className="mt-3 flex items-center justify-between">
-            <RatingStars value={product.ratings?.average ?? 0} />
-            <div className="text-right">
-              <div className="text-3xl font-semibold text-primary">
-                {formatPrice(price)}
-              </div>
-              {product.discountPercentage ? (
-                <div className="text-sm text-muted-foreground line-through">
-                  {formatPrice(product.originalPrice)}
+          <strong>{formatPrice(price)}</strong>
+          <span>{product.availability}</span>
+        </div>
+        <Button
+          aria-label="Add item from mobile buy bar"
+          disabled={unavailable || isPending(id)}
+          onClick={add}
+        >
+          <ShoppingBag />
+          {isPending(id)
+            ? "Adding…"
+            : unavailable
+              ? "Out of stock"
+              : "Add to cart"}
+        </Button>
+      </div>
+      <nav className="forge-breadcrumb" aria-label="Breadcrumb">
+        <Link href="/">Home</Link>
+        <ChevronRight size={12} />
+        <Link href="/products">Shop</Link>
+        <ChevronRight size={12} />
+        <Link
+          href={`/products?category=${encodeURIComponent(product.category)}`}
+        >
+          {product.category}
+        </Link>
+        <ChevronRight size={12} />
+        <span className="text-foreground">{product.name}</span>
+      </nav>
+      <ProductSections
+        sections={[
+          { id: "overview", label: "Overview" },
+          { id: "features", label: "The upgrade" },
+          ...(specs.length
+            ? [{ id: "specifications", label: "Specifications" }]
+            : []),
+          { id: "compatibility", label: "Compatibility" },
+          { id: "support", label: "Warranty" },
+          { id: "questions", label: "Store guide" },
+          { id: "reviews", label: "Reviews" },
+        ]}
+      />
+      <div className="forge-detail-layout" id="overview">
+        <div>
+          <ProductMedia key={product.id} product={product} />
+          {highlights.length > 0 && (
+            <div className="forge-spec-highlights">
+              {highlights.map((spec) => (
+                <div key={spec.label}>
+                  <span>{spec.label}</span>
+                  <strong>{spec.value}</strong>
                 </div>
-              ) : null}
+              ))}
             </div>
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <span className="rounded border px-3 py-1 text-sm font-medium">
-              {product.availability || "In Stock"}
+          )}
+        </div>
+        <aside className="forge-buy-box">
+          <p className="forge-eyebrow">
+            {product.brand} / {product.category}
+          </p>
+          <h1>{product.name}</h1>
+          <p className="text-[10px] font-mono text-muted-foreground">
+            SKU / {product.sku}
+          </p>
+          {demo && (
+            <p className="forge-demo-notice">
+              Demo listing. Images, specifications, price and inventory are
+              illustrative.
+            </p>
+          )}
+          <a
+            href="#reviews"
+            className="mt-4 inline-flex min-h-8 items-center gap-3"
+          >
+            <RatingStars value={product.ratings.average} />
+            <span className="text-xs text-muted-foreground">
+              {product.ratings.totalReviews} reviews
             </span>
-            {product.stock !== undefined && (
-              <span className="rounded border px-3 py-1 text-sm text-muted-foreground">
-                Stock: {product.stock} units
-              </span>
-            )}
-            {product.warranty && (
-              <span className="rounded border px-3 py-1 text-sm text-muted-foreground">
-                Warranty: {product.warranty}
-              </span>
-            )}
-            {product.weight && (
-              <span className="rounded border px-3 py-1 text-sm text-muted-foreground">
-                Weight: {product.weight}kg
-              </span>
-            )}
-            {product.ratings?.totalReviews > 0 && (
-              <span className="rounded border px-3 py-1 text-sm text-muted-foreground">
-                {product.ratings.totalReviews} reviews
-              </span>
+          </a>
+          <div className="forge-buy-price">
+            <strong>{formatPrice(price)}</strong>
+            {!!product.discountPercentage && (
+              <>
+                <del>{formatPrice(product.originalPrice)}</del>
+                <span>SAVE {product.discountPercentage}%</span>
+              </>
             )}
           </div>
-
-          <div className="mt-6 flex gap-3">
+          <p className="flex items-center gap-2 text-xs">
+            <span
+              className={
+                unavailable
+                  ? "h-1.5 w-1.5 rounded-full bg-destructive"
+                  : "forge-status-dot"
+              }
+            />
+            {product.availability}
+            {typeof product.stock === "number" && product.stock > 0 && (
+              <span className="text-muted-foreground">
+                / {product.stock} available
+              </span>
+            )}
+          </p>
+          <div className="forge-buy-controls">
+            <div>
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled={quantity <= 1 || isPending(id)}
+                onClick={() => setQuantity((q) => q - 1)}
+                aria-label="Decrease quantity"
+              >
+                <Minus />
+              </Button>
+              <span className="font-mono text-xs" aria-live="polite">
+                {quantity}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled={
+                  isPending(id) ||
+                  (product.stock != null && quantity >= product.stock)
+                }
+                onClick={() => setQuantity((q) => q + 1)}
+                aria-label="Increase quantity"
+              >
+                <Plus />
+              </Button>
+            </div>
             <Button
-              onClick={handleAddToCart}
-              disabled={product.availability === "Out of Stock"}
-              className="flex-1"
+              className="forge-buy-add"
+              disabled={unavailable || isPending(id)}
+              onClick={add}
             >
-              {addedToCart ? (
-                <>
-                  <Check className="mr-2 h-4 w-4" /> Added!
-                </>
+              {added ? <Check /> : <ShoppingBag />}
+              {isPending(id) ? (
+                <span className="forge-processing">
+                  <i />
+                  Adding…
+                </span>
+              ) : unavailable ? (
+                "Out of stock"
+              ) : added ? (
+                "Add more"
               ) : (
-                <>
-                  <ShoppingCart className="mr-2 h-4 w-4" /> Add to Cart
-                </>
+                "Add to cart"
               )}
             </Button>
-            <Button
-              variant="secondary"
-              onClick={handleWishlistToggle}
-              disabled={wishlistLoading}
-            >
-              <Heart
-                className={`h-4 w-4 ${
-                  isInWishlist ? "fill-current text-red-500" : ""
-                }`}
-              />
-            </Button>
           </div>
-
-          <div className="mt-8 space-y-4">
-            <div>
-              <h2 className="font-heading text-xl">Description</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {product.description ||
-                  "High-performance component for gamers and creators."}
-              </p>
-            </div>
-            {product.specifications && product.specifications.length > 0 && (
-              <div>
-                <h2 className="font-heading text-xl">Specifications</h2>
-                <ul className="mt-2 grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
-                  {product.specifications.map((s) => (
-                    <li
-                      key={s.key}
-                      className="flex items-center justify-between rounded-md border bg-card/60 p-2"
-                    >
-                      <span className="text-muted-foreground">{s.key}</span>
-                      <span>{s.value}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {product.features && product.features.length > 0 && (
-              <div>
-                <h2 className="font-heading text-xl">Features</h2>
-                <ul className="mt-2 list-disc pl-5 text-sm text-muted-foreground">
-                  {product.features.map((f, i) => (
-                    <li key={i}>{f}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {product.dimensions && (
-              <div>
-                <h2 className="font-heading text-xl">Dimensions</h2>
-                <div className="mt-2 grid grid-cols-3 gap-2 text-sm">
-                  {product.dimensions.length && (
-                    <div className="rounded-md border bg-card/60 p-2">
-                      <span className="text-muted-foreground">Length:</span>{" "}
-                      <span className="font-medium">
-                        {product.dimensions.length}cm
-                      </span>
-                    </div>
-                  )}
-                  {product.dimensions.width && (
-                    <div className="rounded-md border bg-card/60 p-2">
-                      <span className="text-muted-foreground">Width:</span>{" "}
-                      <span className="font-medium">
-                        {product.dimensions.width}cm
-                      </span>
-                    </div>
-                  )}
-                  {product.dimensions.height && (
-                    <div className="rounded-md border bg-card/60 p-2">
-                      <span className="text-muted-foreground">Height:</span>{" "}
-                      <span className="font-medium">
-                        {product.dimensions.height}cm
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <WishlistButton productId={id} className="text-xs" />
+            <CompareButton product={product} label />
+          </div>
+          <div className="forge-buy-perks">
+            <span>
+              <ShieldCheck />
+              Secure payment through Stripe
+            </span>
+            <span>
+              <Package />
+              Track your order in your account
+            </span>
+            {product.warranty && (
+              <span>
+                <ShieldCheck />
+                {product.warranty}
+              </span>
             )}
           </div>
+          <Link href="/pc-builder" className="forge-text-link">
+            Make this part of your next build <ArrowRight size={16} />
+          </Link>
+          <a href="#compatibility" className="forge-fit-link">
+            Will it fit your build? <ArrowRight size={16} />
+          </a>
+        </aside>
+        <div className="forge-detail-secondary lg:col-start-1">
+          <Reveal>
+            <ProductStory product={product} />
+          </Reveal>
+          {specs.length > 0 && (
+            <section className="forge-product-story" id="specifications">
+              <p className="forge-eyebrow">UNDER THE HOOD</p>
+              <h2>The details that matter.</h2>
+              <table className="forge-spec-table">
+                <caption className="sr-only">
+                  {product.name} specifications
+                </caption>
+                <tbody>
+                  {specs.map((spec) => (
+                    <tr key={spec.key}>
+                      <th scope="row">{spec.key}</th>
+                      <td>{spec.value}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
+          <div className="mt-8">
+            <ProductExtraDetails product={product} />
+          </div>
+          <section id="compatibility" className="forge-product-story">
+            <p className="forge-eyebrow">PLAN YOUR NEXT UPGRADE</p>
+            <h2>Check your build.</h2>
+            <ProductSetupGuide product={product} />
+            <CompatibilityPanel product={product} />
+          </section>
+          <ProductSupport product={product} />
+          <div id="questions">
+            <ProductFAQ product={product} />
+          </div>
+          <section id="reviews" className="forge-product-story">
+            <p className="forge-eyebrow">FROM THE COMMUNITY</p>
+            <h2>Player feedback.</h2>
+            <ReviewList productId={id} />
+            <MyProductReview productId={id} />
+          </section>
         </div>
       </div>
-
-      {related.length > 0 && (
-        <section className="mt-12">
-          <h2 className="font-heading text-2xl">Related Products</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-4">
-            {related.map((p) => (
-              <ProductCard key={p.id} product={p} />
-            ))}
+      <ProductComplements key={product.id} product={product} />
+      <section className="forge-section">
+        <div className="forge-section-heading">
+          <div>
+            <p className="forge-eyebrow">COMPARE YOUR OPTIONS</p>
+            <h2>More in {product.category}.</h2>
           </div>
-        </section>
-      )}
+          <Link
+            href={`/products?category=${encodeURIComponent(product.category)}`}
+            className="forge-text-link"
+          >
+            Explore {product.category} <ArrowRight size={16} />
+          </Link>
+        </div>
+        <ProductGrid
+          products={(related.data?.data ?? []).slice(0, 4)}
+          isLoading={related.isLoading}
+          isError={related.isError}
+          errorMessage={related.error?.message}
+          onRetry={() => related.refetch()}
+          loadingCount={4}
+        />
+      </section>
     </div>
   );
 }

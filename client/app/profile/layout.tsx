@@ -2,10 +2,11 @@
 
 import type React from "react";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth-context";
+import { AccountShell } from "@/components/forge/account-shell";
 
 export default function ProfileLayout({
   children,
@@ -13,13 +14,14 @@ export default function ProfileLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { isAuthenticated, isLoading, user } = useAuth();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.push("/login?redirect=/profile");
+      router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isLoading, router, pathname]);
 
   if (isLoading || !isAuthenticated || !user) {
     return (
@@ -32,5 +34,5 @@ export default function ProfileLayout({
     );
   }
 
-  return children;
+  return <AccountShell>{children}</AccountShell>;
 }

@@ -260,7 +260,6 @@ export type Order = z.infer<typeof OrderSchema>;
 
 export const WishlistItemSchema = z.object({
   id: z.string().uuid(),
-  userId: z.string().uuid(),
   productId: z.string().uuid(),
 });
 

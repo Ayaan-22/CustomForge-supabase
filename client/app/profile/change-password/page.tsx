@@ -7,11 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AuthService } from "@/services/auth-service";
+import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
 
 export default function ChangePasswordPage() {
   const { toast } = useToast();
   const router = useRouter();
+  const { user } = useAuth();
+  const [twoFactorToken, setTwoFactorToken] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
@@ -37,11 +40,14 @@ export default function ChangePasswordPage() {
       return;
     }
 
-    const res = await AuthService.updatePassword({
-      passwordCurrent: currentPassword,
-      password: newPassword,
-      passwordConfirm: confirmPassword,
-    });
+    const res = await AuthService.updatePassword(
+      {
+        passwordCurrent: currentPassword,
+        password: newPassword,
+        passwordConfirm: confirmPassword,
+      },
+      twoFactorToken || undefined,
+    );
     setLoading(false);
 
     if (res.error) {
@@ -66,16 +72,50 @@ export default function ChangePasswordPage() {
       >
         <div className="space-y-2">
           <Label htmlFor="currentPassword">Current password</Label>
-          <Input id="currentPassword" type="password" required />
+          <Input
+            id="currentPassword"
+            type="password"
+            autoComplete="current-password"
+            required
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor="newPassword">New password</Label>
-          <Input id="newPassword" type="password" required minLength={8} />
+          <Input
+            id="newPassword"
+            type="password"
+            autoComplete="new-password"
+            required
+            minLength={8}
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor="confirmPassword">Confirm new password</Label>
-          <Input id="confirmPassword" type="password" required minLength={8} />
+          <Input
+            id="confirmPassword"
+            type="password"
+            autoComplete="new-password"
+            required
+            minLength={8}
+          />
         </div>
+        {user?.twoFactorEnabled && (
+          <div className="space-y-2">
+            <Label htmlFor="twoFactorToken">Authenticator code</Label>
+            <Input
+              id="twoFactorToken"
+              required
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="[0-9]{6}"
+              maxLength={6}
+              value={twoFactorToken}
+              onChange={(e) =>
+                setTwoFactorToken(e.target.value.replace(/\D/g, ""))
+              }
+            />
+          </div>
+        )}
         <div className="flex gap-2">
           <Button type="submit" disabled={loading}>
             {loading ? "Changing..." : "Change password"}

@@ -6,9 +6,10 @@ export interface Rating {
 }
 
 export interface Review {
+  isActive?: boolean;
   id: string;
-  userId: string;
-  productId: string;
+  userId?: string;
+  productId?: string;
   userName?: string;
   rating: number;
   title?: string;
@@ -18,6 +19,8 @@ export interface Review {
 }
 
 export interface Product {
+  gameDetails?: Record<string, unknown> | null;
+  pcDetails?: Record<string, unknown> | null;
   id: string;
   name: string;
   brand: string;
@@ -91,11 +94,7 @@ export interface Cart {
   updatedAt?: string;
 }
 
-export interface WishlistItem {
-  id: string;
-  productId: string;
-  addedAt: string;
-}
+export type WishlistItem = import("./schema").WishlistItem;
 
 export interface OrderItem {
   productId: string;
@@ -105,6 +104,8 @@ export interface OrderItem {
 }
 
 export type OrderStatus =
+  | "processing"
+  | "refunded"
   | "pending"
   | "paid"
   | "shipped"
@@ -113,6 +114,9 @@ export type OrderStatus =
   | "returned";
 
 export interface Order {
+  isPaid: boolean;
+  paymentMethod?: "stripe" | "paypal" | "cod";
+  returnStatus?: string;
   id: string;
   userId: string;
   items: OrderItem[];
@@ -120,6 +124,8 @@ export interface Order {
   status: OrderStatus;
   subtotal?: number;
   discount?: number;
+  shipping?: number;
+  tax?: number;
   total?: number;
   paymentIntentId?: string;
   createdAt?: string;

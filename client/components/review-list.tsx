@@ -1,13 +1,12 @@
 "use client";
 
-import { useProductReviews, useDeleteReview } from "@/hooks/use-reviews";
-import { useAuth } from "@/lib/auth-context";
+import { useState } from "react";
+import { useProductReviews } from "@/hooks/use-reviews";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Star, Trash2, AlertCircle } from "lucide-react";
-import { toast } from "sonner";
+import { Star, AlertCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 type ReviewListProps = {
@@ -15,27 +14,13 @@ type ReviewListProps = {
 };
 
 export function ReviewList({ productId }: ReviewListProps) {
-  const { user } = useAuth();
-  const { data: reviews, isLoading, error } = useProductReviews(productId);
-  const deleteReview = useDeleteReview(productId);
-
-  const handleDelete = async (reviewId: string) => {
-    if (!confirm("Are you sure you want to delete this review?")) {
-      return;
-    }
-
-    try {
-      const response = await deleteReview.mutateAsync(reviewId);
-      if (response.error) {
-        toast.error(response.error.message || "Failed to delete review");
-      } else {
-        toast.success("Review deleted successfully");
-      }
-    } catch (error) {
-      toast.error("An error occurred. Please try again.");
-    }
-  };
-
+  const [page, setPage] = useState(1);
+  const { data, isLoading, error, refetch } = useProductReviews(productId, {
+    page,
+    limit: 20,
+  });
+  const reviews = data?.data;
+  const pages = Math.max(1, Math.ceil((data?.pagination?.total ?? 0) / 20));
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -57,7 +42,10 @@ export function ReviewList({ productId }: ReviewListProps) {
       <Alert variant="destructive">
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>
-          Failed to load reviews. Please try again later.
+          Failed to load reviews.{" "}
+          <Button variant="outline" onClick={() => refetch()}>
+            Retry
+          </Button>
         </AlertDescription>
       </Alert>
     );
@@ -73,16 +61,43 @@ export function ReviewList({ productId }: ReviewListProps) {
 
   return (
     <div className="space-y-4">
+      <div className="rounded-lg border bg-card p-5">
+        <p className="forge-eyebrow">RATING BREAKDOWN / THIS PAGE</p>
+        <p className="my-3 text-xs text-muted-foreground">
+          Distribution of the {reviews.length} reviews shown below.
+        </p>
+        {[5, 4, 3, 2, 1].map((star) => {
+          const count = reviews.filter(
+            (r) => Math.round(r.rating) === star,
+          ).length;
+          return (
+            <div className="my-2 flex items-center gap-3 text-xs" key={star}>
+              <span className="w-10">{star} stars</span>
+              <div className="h-1.5 flex-1 rounded bg-muted">
+                <div
+                  className="h-full rounded bg-primary"
+                  style={{ width: `${(count / reviews.length) * 100}%` }}
+                />
+              </div>
+              <span className="w-6 text-right text-muted-foreground">
+                {count}
+              </span>
+            </div>
+          );
+        })}
+      </div>
       {reviews.map((review) => {
-        const isOwnReview = user?.id === review.userId;
-
         return (
           <Card key={review.id}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="flex">
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <div
+                      className="flex"
+                      role="img"
+                      aria-label={`${review.rating} out of 5 stars`}
+                    >
                       {[1, 2, 3, 4, 5].map((star) => (
                         <Star
                           key={star}
@@ -113,22 +128,35 @@ export function ReviewList({ productId }: ReviewListProps) {
                     {review.comment}
                   </p>
                 </div>
-
-                {isOwnReview && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDelete(review.id)}
-                    disabled={deleteReview.isPending}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                )}
               </div>
             </CardContent>
           </Card>
         );
       })}
+      {pages > 1 && (
+        <nav
+          aria-label="Review pages"
+          className="flex items-center justify-center gap-3"
+        >
+          <Button
+            variant="outline"
+            disabled={page === 1}
+            onClick={() => setPage(page - 1)}
+          >
+            Previous reviews
+          </Button>
+          <span>
+            Page {page} of {pages}
+          </span>
+          <Button
+            variant="outline"
+            disabled={page >= pages}
+            onClick={() => setPage(page + 1)}
+          >
+            Next reviews
+          </Button>
+        </nav>
+      )}
     </div>
   );
 }

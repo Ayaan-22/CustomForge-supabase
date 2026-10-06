@@ -1,9 +1,12 @@
 // server/controllers/authController.js
 import rateLimit from "express-rate-limit";
 import asyncHandler from "express-async-handler";
+import crypto from "crypto";
 
 import {
-  signToken,
+  verifyJWT,
+  generateTokenPair,
+  hashToken,
   assignEmailVerificationToUser,
   assignPasswordResetToUser,
   generate2FASecret,
@@ -23,23 +26,31 @@ import {
 import Email from "../utils/email.js";
 import AppError from "../utils/appError.js";
 import { logger } from "../middleware/logger.js";
+import { buildCsrfToken } from "../utils/csrf.js";
+import { getAuthClient } from "../config/db.js";
+import { skipRateLimit } from "../config/rateLimit.js";
+import { publicUser } from "../utils/publicUser.js";
+import { authActionUrl } from "../utils/authActionUrl.js";
 
 /* ===========================================================
    RATE LIMITING
 =========================================================== */
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100000000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: skipRateLimit,
   message: "Too many login attempts, please try again later",
 });
 
 /* ===========================================================
    COOKIE OPTIONS
 =========================================================== */
-const cookieOptions = {
+const refreshCookieOptions = {
   expires: new Date(
     Date.now() +
-      Number(process.env.JWT_COOKIE_EXPIRES_IN || 7) * 24 * 60 * 60 * 1000
+      Number(process.env.JWT_REFRESH_COOKIE_EXPIRES_IN || 30) * 24 * 60 * 60 * 1000
   ),
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
@@ -58,18 +69,29 @@ const validatePasswordConfirm = (password, passwordConfirm) => {
   }
 };
 
-const createSendToken = (user, statusCode, res) => {
-  const token = signToken(user.id, user.role);
+const createSendToken = async (user, statusCode, res, client) => {
+  const { accessToken, refreshToken } = generateTokenPair(user.id, user.role);
+  const refreshTokenHash = hashToken(refreshToken);
+  const refreshTokenExpires = new Date(refreshCookieOptions.expires).toISOString();
+  await updateUser(user.id, {
+    refreshTokenHash,
+    refreshTokenExpires,
+  }, client);
 
-  res.cookie("jwt", token, cookieOptions);
+  res.cookie("refresh_token", refreshToken, refreshCookieOptions);
+  res.cookie("csrf_token", buildCsrfToken(`refresh:${refreshToken}`), {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+  });
 
-  const safeUser = { ...user };
-  delete safeUser.password;
+  const safeUser = publicUser(user);
 
   res.status(statusCode).json({
     success: true,
     status: "success",
-    token,
+    token: accessToken,
+    accessToken,
     data: { user: safeUser },
   });
 
@@ -86,6 +108,7 @@ const createSendToken = (user, statusCode, res) => {
    @access Public
 =========================================================== */
 export const signup = asyncHandler(async (req, res, next) => {
+  const supabase = getAuthClient();
   logger.info("Signup start", { email: req.body?.email });
 
   const { name, email, password, passwordConfirm } = req.body;
@@ -97,23 +120,21 @@ export const signup = asyncHandler(async (req, res, next) => {
     email,
     password,
     isEmailVerified: false,
-  });
+  }, supabase);
 
   // Assign token & store hashed token in DB
-  const verificationToken = await assignEmailVerificationToUser(newUser.id);
+  const verificationToken = await assignEmailVerificationToUser(newUser.id, supabase);
 
   try {
-    const verificationUrl = `${req.protocol}://${req.get(
-      "host"
-    )}/api/auth/verify-email/${verificationToken}`;
+    const verificationUrl = authActionUrl("verify-email", verificationToken);
 
-    await new Email(newUser, verificationUrl).sendWelcome();
+    await new Email(newUser, verificationUrl).sendWelcome({ verifyEmail: true });
 
     res.status(201).json({
       status: "success",
       message:
         "User registered successfully. Please check your email to verify your account.",
-      data: { user: newUser },
+      data: { user: publicUser(newUser) },
     });
 
     logger.info("Signup success (verification email sent)", {
@@ -124,7 +145,7 @@ export const signup = asyncHandler(async (req, res, next) => {
     await updateUser(newUser.id, {
       emailVerificationToken: null,
       emailVerificationExpires: null,
-    });
+    }, supabase);
 
     logger.error("Email send failure at signup", {
       error: err.message,
@@ -142,17 +163,19 @@ export const signup = asyncHandler(async (req, res, next) => {
    @access Public
 =========================================================== */
 export const verifyEmail = asyncHandler(async (req, res, next) => {
+  const supabase = getAuthClient();
   logger.info("Verify email start");
 
-  const user = await verifyEmailToken(req.params.token);
+  const user = await verifyEmailToken(req.params.token, supabase);
+  if (user.active === false) return next(new AppError("Account disabled. Contact support.", 403));
 
-  await updateUser(user.id, {
+  const verifiedUser = await updateUser(user.id, {
     isEmailVerified: true,
     emailVerificationToken: null,
     emailVerificationExpires: null,
-  });
+  }, supabase);
 
-  createSendToken(user, 200, res);
+  await createSendToken(verifiedUser, 200, res, supabase);
 
   logger.info("Email verified", { userId: user.id });
 });
@@ -164,6 +187,7 @@ export const verifyEmail = asyncHandler(async (req, res, next) => {
    @access Public
 =========================================================== */
 export const login = asyncHandler(async (req, res, next) => {
+  const supabase = getAuthClient();
   logger.info("Login attempt", { email: req.body?.email });
 
   const { email, password } = req.body;
@@ -172,11 +196,13 @@ export const login = asyncHandler(async (req, res, next) => {
     return next(new AppError("Please provide email and password", 400));
   }
 
-  const user = await findUserByEmail(email, { includePassword: true });
+  const user = await findUserByEmail(email, { includePassword: true }, supabase);
 
   if (!user || !(await comparePassword(password, user.password))) {
     return next(new AppError("Incorrect email or password", 401));
   }
+
+  if (user.active === false) return next(new AppError("Account disabled. Contact support.", 403));
 
   if (!user.isEmailVerified) {
     return next(new AppError("Please verify your email first", 401));
@@ -202,7 +228,7 @@ export const login = asyncHandler(async (req, res, next) => {
     }
   }
 
-  createSendToken(user, 200, res);
+  await createSendToken(user, 200, res, supabase);
 
   logger.info("Login success", { userId: user.id });
 });
@@ -214,9 +240,33 @@ export const login = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const logout = (req, res) => {
-  res.cookie("jwt", "loggedout", {
+  const refreshToken = req.cookies?.refresh_token;
+  if (req.user?.id) {
+    updateUser(req.user.id, {
+      refreshTokenHash: null,
+      refreshTokenExpires: null,
+    }, getAuthClient()).catch(() => {});
+  } else if (refreshToken) {
+    try {
+      const decoded = verifyJWT(refreshToken);
+      updateUser(decoded.userId, {
+        refreshTokenHash: null,
+        refreshTokenExpires: null,
+      }, getAuthClient()).catch(() => {});
+    } catch {}
+  }
+
+  res.cookie("refresh_token", "loggedout", {
     expires: new Date(Date.now() + 10 * 1000),
     httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+  });
+  res.cookie("csrf_token", "loggedout", {
+    expires: new Date(Date.now() + 10 * 1000),
+    httpOnly: false,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
   });
 
   res.status(200).json({ status: "success" });
@@ -235,18 +285,17 @@ export const logout = (req, res) => {
 export const forgotPassword = asyncHandler(async (req, res, next) => {
   logger.info("Forgot password start", { email: req.body?.email });
 
+  const supabase = getAuthClient();
   const user = await findUserByEmail(req.body.email, {
     includePassword: false,
-  });
+  }, supabase);
 
   if (!user) return next(new AppError("No user with that email", 404));
 
-  const resetToken = await assignPasswordResetToUser(user.id);
+  const resetToken = await assignPasswordResetToUser(user.id, supabase);
 
   try {
-    const resetURL = `${req.protocol}://${req.get(
-      "host"
-    )}/api/auth/reset-password/${resetToken}`;
+    const resetURL = authActionUrl("reset-password", resetToken);
 
     await new Email(user, resetURL).sendPasswordReset();
 
@@ -260,7 +309,7 @@ export const forgotPassword = asyncHandler(async (req, res, next) => {
     await updateUser(user.id, {
       passwordResetToken: null,
       passwordResetExpires: null,
-    });
+    }, supabase);
 
     logger.error("Forgot password email failed", {
       error: err.message,
@@ -278,9 +327,10 @@ export const forgotPassword = asyncHandler(async (req, res, next) => {
    @access Public
 =========================================================== */
 export const resetPassword = asyncHandler(async (req, res, next) => {
+  const supabase = getAuthClient();
   logger.info("Reset password start");
 
-  const user = await verifyPasswordResetToken(req.params.token);
+  const user = await verifyPasswordResetToken(req.params.token, supabase);
 
   validatePasswordConfirm(req.body.password, req.body.passwordConfirm);
 
@@ -289,10 +339,10 @@ export const resetPassword = asyncHandler(async (req, res, next) => {
     passwordChangedAt: new Date().toISOString(),
     passwordResetToken: null,
     passwordResetExpires: null,
-  });
+  }, supabase);
 
-  const updatedUser = await findUserById(user.id);
-  createSendToken(updatedUser, 200, res);
+  const updatedUser = await findUserById(user.id, {}, supabase);
+  await createSendToken(updatedUser, 200, res, supabase);
 
   logger.info("Password reset", { userId: user.id });
 });
@@ -304,6 +354,7 @@ export const resetPassword = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const updatePassword = asyncHandler(async (req, res, next) => {
+  const supabase = getAuthClient();
   logger.info("Update password start", { userId: req.user.id });
 
   const { passwordCurrent, password, passwordConfirm } = req.body;
@@ -317,7 +368,7 @@ export const updatePassword = asyncHandler(async (req, res, next) => {
     );
   }
 
-  const user = await findUserById(req.user.id, { includePassword: true });
+  const user = await findUserById(req.user.id, { includePassword: true }, supabase);
 
   if (!user) return next(new AppError("User not found", 404));
 
@@ -330,10 +381,10 @@ export const updatePassword = asyncHandler(async (req, res, next) => {
   await updateUser(user.id, {
     password,
     passwordChangedAt: new Date().toISOString(),
-  });
+  }, supabase);
 
-  const updatedUser = await findUserById(user.id);
-  createSendToken(updatedUser, 200, res);
+  const updatedUser = await findUserById(user.id, {}, supabase);
+  await createSendToken(updatedUser, 200, res, supabase);
 
   logger.info("Password updated", { userId: user.id });
 });
@@ -345,6 +396,10 @@ export const updatePassword = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const enableTwoFactor = asyncHandler(async (req, res, next) => {
+  if (req.user.twoFactorEnabled) {
+    return next(new AppError("Disable existing two-factor authentication before setting it up again.", 409));
+  }
+  const supabase = getAuthClient();
   logger.info("Enable 2FA start", { userId: req.user.id });
 
   const { password } = req.body;
@@ -358,7 +413,7 @@ export const enableTwoFactor = asyncHandler(async (req, res, next) => {
     );
   }
 
-  const user = await findUserById(req.user.id, { includePassword: true });
+  const user = await findUserById(req.user.id, { includePassword: true }, supabase);
 
   if (!user) return next(new AppError("User not found", 404));
 
@@ -371,7 +426,7 @@ export const enableTwoFactor = asyncHandler(async (req, res, next) => {
   await updateUser(user.id, {
     twoFactorSecret: secret.base32,
     twoFactorEnabled: false,
-  });
+  }, supabase);
 
   res.status(200).json({
     status: "success",
@@ -391,6 +446,7 @@ export const enableTwoFactor = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const disableTwoFactor = asyncHandler(async (req, res, next) => {
+  const supabase = getAuthClient();
   logger.info("Disable 2FA start", { userId: req.user.id });
 
   const { password, token } = req.body;
@@ -406,7 +462,7 @@ export const disableTwoFactor = asyncHandler(async (req, res, next) => {
 
   const user = await findUserById(req.user.id, {
     includePassword: true,
-  });
+  }, supabase);
 
   if (!user) return next(new AppError("User not found", 404));
 
@@ -422,7 +478,7 @@ export const disableTwoFactor = asyncHandler(async (req, res, next) => {
   await updateUser(user.id, {
     twoFactorEnabled: false,
     twoFactorSecret: null,
-  });
+  }, supabase);
 
   res.status(200).json({
     status: "success",
@@ -439,6 +495,7 @@ export const disableTwoFactor = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const verifyTwoFactor = asyncHandler(async (req, res, next) => {
+  const supabase = getAuthClient();
   logger.info("Verify 2FA start", { userId: req.user.id });
 
   const { token } = req.body;
@@ -449,7 +506,7 @@ export const verifyTwoFactor = asyncHandler(async (req, res, next) => {
 
   const user = await findUserById(req.user.id, {
     includePassword: false,
-  });
+  }, supabase);
 
   if (!user.twoFactorSecret) {
     return next(new AppError("2FA is not initialized for this user", 400));
@@ -462,7 +519,7 @@ export const verifyTwoFactor = asyncHandler(async (req, res, next) => {
 
   await updateUser(user.id, {
     twoFactorEnabled: true,
-  });
+  }, supabase);
 
   res.status(200).json({
     status: "success",
@@ -479,19 +536,66 @@ export const verifyTwoFactor = asyncHandler(async (req, res, next) => {
    @access Private
 =========================================================== */
 export const refreshToken = asyncHandler(async (req, res, next) => {
-  logger.info("Refresh token request", { userId: req.user?.id });
-
-  if (!req.user) {
-    return next(new AppError("Not authenticated", 401));
+  const supabase = getAuthClient();
+  const presentedRefreshToken = req.cookies?.refresh_token;
+  if (!presentedRefreshToken) {
+    return next(new AppError("Refresh token is missing", 401));
   }
 
-  const user = await findUserById(req.user.id);
+  let decoded;
+  try {
+    decoded = verifyJWT(presentedRefreshToken);
+  } catch (err) {
+    return next(new AppError("Invalid or expired refresh token", 401));
+  }
+
+  const user = await findUserById(decoded.userId, { includePassword: false }, supabase);
   if (!user || !user.active) {
     return next(new AppError("User not found or inactive", 401));
   }
 
-  createSendToken(user, 200, res);
-  logger.info("Token refreshed", { userId: user.id });
+  if (!user.refreshTokenHash || !user.refreshTokenExpires) {
+    return next(new AppError("Refresh session not found", 401));
+  }
+
+  const presentedHash = hashToken(presentedRefreshToken);
+  if (presentedHash !== user.refreshTokenHash) {
+    return next(new AppError("Refresh token mismatch", 401));
+  }
+
+  if (new Date(user.refreshTokenExpires).getTime() < Date.now()) {
+    return next(new AppError("Refresh token expired", 401));
+  }
+
+  await createSendToken(user, 200, res, supabase);
+  logger.info("Token rotated", { userId: user.id });
+});
+
+export const csrfToken = asyncHandler(async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  let anonSession = req.cookies?.anon_session;
+  if (!anonSession && !req.cookies?.refresh_token) {
+    anonSession = crypto.randomBytes(16).toString("hex");
+    res.cookie("anon_session", anonSession, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    });
+  }
+
+  const binding = req.cookies?.refresh_token
+    ? `refresh:${req.cookies.refresh_token}`
+    : `anon:${anonSession}`;
+  const token = buildCsrfToken(binding);
+  res.cookie("csrf_token", token, {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+  });
+  res.status(200).json({
+    success: true,
+    data: { csrfToken: token },
+  });
 });
 
 /* ===========================================================
@@ -500,10 +604,32 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
    @route  POST /api/auth/send-verification-email
    @access Private
 =========================================================== */
+// Password proof permits email recovery without issuing an unverified session.
+export const resendVerification = asyncHandler(async (req, res, next) => {
+  const supabase = getAuthClient();
+  const user = await findUserByEmail(req.body.email, { includePassword: true }, supabase);
+  if (!user || !(await comparePassword(req.body.password, user.password)) || user.active === false) {
+    return next(new AppError('Incorrect email or password', 401));
+  }
+  if (user.isEmailVerified) {
+    return res.json({ success: true, data: { message: 'Your email is already verified. You can sign in.' } });
+  }
+  const token = await assignEmailVerificationToUser(user.id, supabase);
+  try {
+    await new Email(user, authActionUrl('verify-email', token)).sendVerificationEmail();
+  } catch (error) {
+    // Do not clear a token that a concurrent resend may have just replaced.
+    logger.error('Verification recovery email failed', { userId: user.id, code: error.code || 'MAIL_FAILURE' });
+    return next(new AppError('Unable to send verification email. Please try again later.', 503));
+  }
+  res.json({ success: true, data: { message: 'Verification email sent. Open the newest link in your inbox or spam folder.' } });
+});
+
 export const sendVerificationEmail = asyncHandler(async (req, res, next) => {
+  const supabase = getAuthClient();
   logger.info("Send verification email request", { userId: req.user?.id });
 
-  const user = await findUserById(req.user.id);
+  const user = await findUserById(req.user.id, {}, supabase);
   if (!user) {
     return next(new AppError("User not found", 404));
   }
@@ -512,14 +638,12 @@ export const sendVerificationEmail = asyncHandler(async (req, res, next) => {
     return next(new AppError("Email already verified", 400));
   }
 
-  const verificationToken = await assignEmailVerificationToUser(user.id);
+  const verificationToken = await assignEmailVerificationToUser(user.id, supabase);
 
   try {
-    const verificationUrl = `${req.protocol}://${req.get(
-      "host"
-    )}/api/v1/auth/verify-email/${verificationToken}`;
+    const verificationUrl = authActionUrl("verify-email", verificationToken);
 
-    await new Email(user, verificationUrl).sendWelcome();
+    await new Email(user, verificationUrl).sendVerificationEmail();
 
     res.status(200).json({
       status: "success",
@@ -531,7 +655,7 @@ export const sendVerificationEmail = asyncHandler(async (req, res, next) => {
     await updateUser(user.id, {
       emailVerificationToken: null,
       emailVerificationExpires: null,
-    });
+    }, supabase);
 
     logger.error("Email send failure", {
       error: err.message,

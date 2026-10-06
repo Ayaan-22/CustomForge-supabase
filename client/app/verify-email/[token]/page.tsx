@@ -1,71 +1,171 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { ArrowRight, CheckCircle2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  AuthShell,
+  AuthFeedback,
+  AuthLoading,
+} from "@/components/forge/auth-shell";
 import { AuthService } from "@/services/auth-service";
 import { storeAuthTokens } from "@/lib/apiClient";
+import {
+  createVerificationRequestCache,
+  observeVerificationRequest,
+  verificationToken,
+} from "@/lib/email-verification";
 
-export default function VerifyEmailPage() {
+type VerificationState = {
+  token: string | null;
+  status: "verifying" | "success" | "error";
+  message: string;
+};
+
+export default function VerifyEmailTokenPage() {
   const params = useParams();
-  const router = useRouter();
-  const [status, setStatus] = useState<"verifying" | "success" | "error">(
-    "verifying"
+  const token = verificationToken(params.token);
+  const [result, setResult] = useState<VerificationState>({
+    token,
+    status: "verifying",
+    message: "",
+  });
+  const request = useRef(
+    createVerificationRequestCache(AuthService.verifyEmail),
   );
-  const [message, setMessage] = useState("");
+  const resultHeading = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const token = params.token as string;
-    AuthService.verifyEmail(token).then((res) => {
-      if (res.error) {
-        setStatus("error");
-        setMessage(res.error.message);
-      } else {
-        if (res.data?.token) {
-          storeAuthTokens({ token: res.data.token });
+    setResult({ token, status: "verifying", message: "" });
+    if (!token) {
+      setResult({
+        token,
+        status: "error",
+        message:
+          "This verification link is incomplete. Request a new link to continue.",
+      });
+      return;
+    }
+    // Reuse this token's settled or in-flight result during Strict Mode replay.
+    // A newer route token makes the previous subscriber inactive.
+    return observeVerificationRequest(
+      request.current(token),
+      (response) => {
+        if (response.error) {
+          setResult({
+            token,
+            status: "error",
+            message: response.error.message,
+          });
+        } else {
+          if (response.data?.token && response.data.user) {
+            storeAuthTokens({
+              token: response.data.token,
+              user: response.data.user,
+            });
+          }
+          setResult({
+            token,
+            status: "success",
+            message:
+              response.data?.message || "Your email address is verified.",
+          });
         }
-        setStatus("success");
-        setMessage(res.data?.message || "Email verified successfully");
-      }
-    });
-  }, [params.token]);
+      },
+      () => {
+        setResult({
+          token,
+          status: "error",
+          message:
+            "We could not confirm this link. Request a fresh link, or sign in if you already verified your email.",
+        });
+      },
+    );
+  }, [token]);
+
+  const current =
+    result.token === token
+      ? result
+      : { token, status: "verifying", message: "" };
+  useEffect(() => {
+    if (current.status !== "verifying") resultHeading.current?.focus();
+  }, [current.status, token]);
 
   return (
-    <div className="container mx-auto grid place-items-center px-4 py-12">
-      <div className="w-full max-w-md space-y-4 rounded-md border bg-card/60 p-6 text-center">
-        {status === "verifying" && (
-          <>
-            <h1 className="font-heading text-2xl">Verifying email...</h1>
-            <p className="text-sm text-muted-foreground">Please wait</p>
-          </>
-        )}
-        {status === "success" && (
-          <>
-            <h1 className="font-heading text-2xl text-green-600">
-              Email verified!
-            </h1>
-            <p className="text-sm text-muted-foreground">{message}</p>
-            <Button onClick={() => router.push("/profile")} className="w-full">
-              Continue to Profile
-            </Button>
-          </>
-        )}
-        {status === "error" && (
-          <>
-            <h1 className="font-heading text-2xl text-destructive">
-              Verification failed
-            </h1>
-            <p className="text-sm text-muted-foreground">{message}</p>
-            <Button
-              variant="outline"
-              onClick={() => router.push("/")}
-              className="w-full"
+    <AuthShell
+      eyebrow="Account verification"
+      title={
+        current.status === "success"
+          ? "You're verified."
+          : current.status === "error"
+            ? "Let's recover your link."
+            : "One final checkpoint."
+      }
+      description={
+        current.status === "success"
+          ? "Your account is ready for its next upgrade."
+          : "Confirm your email to keep your account and orders connected."
+      }
+      variant="verify"
+    >
+      {current.status === "verifying" ? (
+        <AuthLoading message="Checking your verification link…" />
+      ) : (
+        <div className="forge-auth-form">
+          <div
+            ref={resultHeading}
+            tabIndex={-1}
+            className="forge-auth-result-focus"
+          >
+            <AuthFeedback
+              tone={current.status === "success" ? "success" : "error"}
+              title={
+                current.status === "success"
+                  ? "Email verified"
+                  : "Link could not be verified"
+              }
             >
-              Go home
-            </Button>
-          </>
-        )}
-      </div>
-    </div>
+              {current.message}
+            </AuthFeedback>
+          </div>
+          {current.status === "success" ? (
+            <>
+              <div className="forge-auth-field-help">
+                Continue to your account to review your profile and security
+                settings.
+              </div>
+              <Button asChild className="forge-auth-submit">
+                <Link href="/profile">
+                  <CheckCircle2 aria-hidden="true" /> Continue to account{" "}
+                  <ArrowRight aria-hidden="true" />
+                </Link>
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="forge-auth-field-help">
+                Links may expire or have already been used. Request a new one
+                and open the newest email.
+              </p>
+              <Button asChild className="forge-auth-submit">
+                <Link href="/verify-email">
+                  <RefreshCw aria-hidden="true" /> Request a new link
+                </Link>
+              </Button>
+            </>
+          )}
+          <div className="forge-auth-links">
+            <Link href="/login">
+              {current.status === "error"
+                ? "Already verified? Sign in"
+                : "Back to sign in"}
+            </Link>
+            <Link href="/products">Explore the store</Link>
+          </div>
+        </div>
+      )}
+    </AuthShell>
   );
 }

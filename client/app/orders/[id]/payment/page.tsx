@@ -1,315 +1,332 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import "@/app/forge-payment.css";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  CheckCircle2,
+  CreditCard,
+  LockKeyhole,
+  Package,
+  RefreshCw,
+  ShieldCheck,
+  Truck,
+  AlertCircle,
+} from "lucide-react";
 import { OrderService } from "@/services/order-service";
 import { PaymentService } from "@/services/payment-service";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { requireSuccess } from "@/lib/query-result";
+import { recordedLineTotal } from "@/lib/order-detail";
 import {
-  AlertCircle,
-  CreditCard,
-  Wallet,
-  Banknote,
-  CheckCircle,
-  Loader2,
-} from "lucide-react";
+  paymentPresentation,
+  recordedAmount,
+  stripeCheckoutUrl,
+} from "@/lib/payment-presentation";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatPrice } from "@/lib/format";
-import { toast } from "sonner";
-
-type PaymentMethod = "stripe" | "paypal" | "cod";
+import { CheckoutStepper } from "@/components/forge/checkout-stepper";
 
 export default function PaymentPage() {
-  const params = useParams();
-  const router = useRouter();
-  const orderId = params.id as string;
-
-  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("stripe");
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState<
-    "idle" | "processing" | "success" | "failed"
-  >("idle");
-
-  // Fetch order details
-  const { data: orderResponse, isLoading } = useQuery({
-    queryKey: ["order", orderId],
-    queryFn: () => OrderService.get(orderId),
+  const orderId = useParams().id as string;
+  const submitting = useRef(false);
+  const [handingOff, setHandingOff] = useState(false);
+  const orderQuery = useQuery({
+    queryKey: ["orders", orderId],
+    queryFn: () => OrderService.get(orderId).then(requireSuccess),
   });
-
-  const order = orderResponse?.data?.order;
-
-  // Poll payment status
-  useEffect(() => {
-    if (!order || order.status === "paid") {
-      return;
-    }
-
-    const interval = setInterval(async () => {
+  const order = orderQuery.data?.data;
+  const state = order ? paymentPresentation(order) : null;
+  const payment = useMutation({
+    mutationFn: async () => {
+      const result = requireSuccess(
+        await PaymentService.createStripeSession({ orderId }),
+      );
+      const url = stripeCheckoutUrl(result.data?.url);
+      setHandingOff(true);
       try {
-        const response = await OrderService.paymentStatus(orderId);
-        if (response.data?.status === "paid") {
-          setPaymentStatus("success");
-          clearInterval(interval);
-          setTimeout(() => {
-            router.push(`/orders/${orderId}`);
-          }, 2000);
-        }
+        window.location.assign(url);
       } catch (error) {
-        console.error("Failed to check payment status:", error);
-      }
-    }, 3000); // Poll every 3 seconds
-
-    return () => clearInterval(interval);
-  }, [order, orderId, router]);
-
-  // Process payment mutation
-  const processPaymentMutation = useMutation({
-    mutationFn: async (method: PaymentMethod) => {
-      setIsProcessing(true);
-      setPaymentStatus("processing");
-
-      if (method === "stripe") {
-        // Use the generic process method for Stripe
-        return PaymentService.process({
-          orderId,
-          paymentMethod: "stripe",
-          paymentData: { paymentMethodId: "pm_card_visa" }, // This would come from Stripe Elements
-        });
-      } else if (method === "paypal") {
-        // For PayPal, first create the order, then capture it
-        const createResponse = await PaymentService.createPayPalOrder({
-          orderId,
-        });
-        if (createResponse.error || !createResponse.data?.paypalOrderId) {
-          throw new Error("Failed to create PayPal order");
-        }
-        // In a real implementation, the user would approve the PayPal order here
-        // Then we capture it
-        return PaymentService.capturePayPalOrder({
-          orderId,
-          paypalOrderId: createResponse.data.paypalOrderId,
-        });
-      } else {
-        // COD
-        return PaymentService.createOrderCod({ orderId });
+        setHandingOff(false);
+        throw error;
       }
     },
-    onSuccess: (response) => {
-      if (response.error) {
-        toast.error(response.error.message || "Payment failed");
-        setPaymentStatus("failed");
-        setIsProcessing(false);
-      } else {
-        toast.success("Payment successful!");
-        setPaymentStatus("success");
-        setTimeout(() => {
-          router.push(`/orders/${orderId}`);
-        }, 2000);
-      }
-    },
+    retry: false,
     onError: () => {
-      toast.error("An error occurred during payment");
-      setPaymentStatus("failed");
-      setIsProcessing(false);
+      submitting.current = false;
+      setHandingOff(false);
     },
   });
-
-  const handlePayment = () => {
-    processPaymentMutation.mutate(selectedMethod);
-  };
-
-  if (isLoading) {
-    return (
-      <div className="container mx-auto px-4 py-6 max-w-2xl">
-        <Skeleton className="h-8 w-48 mb-6" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
+  const busy = payment.isPending || handingOff;
+  function pay() {
+    if (submitting.current || state !== "ready") return;
+    submitting.current = true;
+    payment.mutate();
   }
-
-  if (!order) {
-    return (
-      <div className="container mx-auto px-4 py-6 max-w-2xl">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>Order not found</AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
-
-  // If already paid, redirect
-  if (order.status === "paid" && paymentStatus !== "success") {
-    router.push(`/orders/${orderId}`);
-    return null;
-  }
+  const orderHref = `/orders/${encodeURIComponent(orderId)}`;
 
   return (
-    <div className="container mx-auto px-4 py-6 max-w-2xl">
-      <h1 className="font-heading text-3xl mb-6">Complete Payment</h1>
-
-      {paymentStatus === "success" ? (
-        <Card className="border-green-500">
-          <CardContent className="p-8 text-center">
-            <CheckCircle className="h-16 w-16 mx-auto text-green-500 mb-4" />
-            <h2 className="font-semibold text-2xl mb-2">Payment Successful!</h2>
-            <p className="text-muted-foreground mb-4">
-              Your order has been confirmed. Redirecting to order details...
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-          {/* Order Summary */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Order Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {order.items.map((item, index) => (
-                  <div key={index} className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">
-                      {item.name || `Item ${index + 1}`} × {item.quantity}
-                    </span>
-                    <span>
-                      {formatPrice((item.price || 0) * item.quantity)}
-                    </span>
-                  </div>
-                ))}
-                <div className="flex justify-between font-semibold text-lg border-t pt-2 mt-2">
-                  <span>Total</span>
-                  <span>{formatPrice(order.total || 0)}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Payment Method Selection */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Select Payment Method</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <RadioGroup
-                value={selectedMethod}
-                onValueChange={(value) =>
-                  setSelectedMethod(value as PaymentMethod)
-                }
-              >
-                {/* Stripe */}
-                <div className="flex items-start space-x-3 border rounded-lg p-4 cursor-pointer hover:bg-accent">
-                  <RadioGroupItem value="stripe" id="stripe" />
-                  <Label htmlFor="stripe" className="flex-1 cursor-pointer">
-                    <div className="flex items-center gap-2 mb-1">
-                      <CreditCard className="h-5 w-5 text-primary" />
-                      <span className="font-medium">Credit/Debit Card</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Pay securely with Stripe
-                    </p>
-                  </Label>
-                </div>
-
-                {/* PayPal */}
-                <div className="flex items-start space-x-3 border rounded-lg p-4 cursor-pointer hover:bg-accent">
-                  <RadioGroupItem value="paypal" id="paypal" />
-                  <Label htmlFor="paypal" className="flex-1 cursor-pointer">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Wallet className="h-5 w-5 text-blue-500" />
-                      <span className="font-medium">PayPal</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Pay with your PayPal account
-                    </p>
-                  </Label>
-                </div>
-
-                {/* Cash on Delivery */}
-                <div className="flex items-start space-x-3 border rounded-lg p-4 cursor-pointer hover:bg-accent">
-                  <RadioGroupItem value="cod" id="cod" />
-                  <Label htmlFor="cod" className="flex-1 cursor-pointer">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Banknote className="h-5 w-5 text-green-500" />
-                      <span className="font-medium">Cash on Delivery</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Pay when you receive your order
-                    </p>
-                  </Label>
-                </div>
-              </RadioGroup>
-            </CardContent>
-          </Card>
-
-          {/* Stripe Card Input (if Stripe selected) */}
-          {selectedMethod === "stripe" && (
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle>Card Details</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    Stripe Elements integration would go here. For demo
-                    purposes, clicking "Pay Now" will use a test card.
-                  </AlertDescription>
-                </Alert>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* PayPal Button (if PayPal selected) */}
-          {selectedMethod === "paypal" && (
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle>PayPal Payment</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    PayPal SDK integration would go here. For demo purposes,
-                    clicking "Pay Now" will simulate PayPal payment.
-                  </AlertDescription>
-                </Alert>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Payment Button */}
+    <div className="forge-payment forge-container">
+      <Link className="forge-payment-back" href={orderHref} prefetch={false}>
+        <ArrowLeft size={16} aria-hidden="true" /> Back to your order
+      </Link>
+      <header className="forge-payment-heading">
+        <div>
+          <p className="forge-eyebrow">CHECKOUT / SECURE HANDOFF</p>
+          <h1>One step from your next level.</h1>
+          <p>
+            Your order is saved. Review the amount, then continue to secure
+            payment.
+          </p>
+        </div>
+        <LockKeyhole size={35} aria-hidden="true" />
+      </header>
+      <CheckoutStepper step={state === "confirmed" ? 3 : 2} />
+      {orderQuery.isLoading ? (
+        <div
+          className="forge-payment-layout"
+          aria-busy="true"
+          aria-label="Loading payment details"
+        >
+          <Skeleton className="h-96 w-full" />
+          <Skeleton className="h-80 w-full" />
+          <span className="sr-only" role="status">
+            Loading your order
+          </span>
+        </div>
+      ) : orderQuery.isError || !order ? (
+        <section className="forge-payment-recovery" role="alert">
+          <AlertCircle size={32} aria-hidden="true" />
+          <h2>Your order could not be loaded.</h2>
+          <p>
+            {orderQuery.error?.message ||
+              "Payment needs the saved order details. Reload to try again."}
+          </p>
           <Button
-            className="w-full"
-            size="lg"
-            onClick={handlePayment}
-            disabled={isProcessing || paymentStatus === "processing"}
+            onClick={() => orderQuery.refetch()}
+            disabled={orderQuery.isFetching}
           >
-            {isProcessing || paymentStatus === "processing" ? (
+            <RefreshCw size={16} aria-hidden="true" />
+            {orderQuery.isFetching ? "Loading order…" : "Retry loading order"}
+          </Button>
+        </section>
+      ) : (
+        <div className="forge-payment-layout">
+          <section
+            className="forge-payment-panel"
+            aria-labelledby="payment-title"
+          >
+            <div className="forge-payment-panel-label">
+              <ShieldCheck size={18} aria-hidden="true" />
+              <span>YOUR PAYMENT</span>
+              <span className="forge-payment-tag">
+                {state === "confirmed" ? "CONFIRMED" : "ORDER SAVED"}
+              </span>
+            </div>
+            {state === "ready" ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Processing Payment...
+                <div className="forge-payment-provider">
+                  <span className="forge-payment-icon">
+                    <CreditCard size={28} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h2 id="payment-title">Secure card checkout</h2>
+                    <p>Powered by Stripe</p>
+                  </div>
+                </div>
+                <p className="forge-payment-description">
+                  Enter your card on Stripe’s secure checkout. You’ll return
+                  here after payment; your order updates when payment is
+                  confirmed by the server.
+                </p>
+                <ol className="forge-payment-steps">
+                  <li>
+                    <i>01</i>
+                    <span>
+                      <strong>Continue securely</strong>
+                      <small>Open checkout for this saved order.</small>
+                    </span>
+                  </li>
+                  <li>
+                    <i>02</i>
+                    <span>
+                      <strong>Complete payment</strong>
+                      <small>Stripe handles your card information.</small>
+                    </span>
+                  </li>
+                  <li>
+                    <i>03</i>
+                    <span>
+                      <strong>Return to your order</strong>
+                      <small>Check the latest confirmed payment status.</small>
+                    </span>
+                  </li>
+                </ol>
+                {payment.isError && (
+                  <div className="forge-payment-error" role="alert">
+                    <AlertCircle size={17} aria-hidden="true" />
+                    <div>
+                      <strong>Checkout could not open.</strong>
+                      <p>{payment.error.message}</p>
+                      <small>
+                        Your saved order is still available. Try again to
+                        continue payment.
+                      </small>
+                    </div>
+                  </div>
+                )}
+                <Button
+                  className="forge-payment-submit"
+                  disabled={busy}
+                  onClick={pay}
+                >
+                  {busy ? (
+                    <span className="forge-processing" role="status">
+                      <i />
+                      Opening secure payment…
+                    </span>
+                  ) : (
+                    <>
+                      Pay {formatPrice(order.total!)} with Stripe{" "}
+                      <ArrowUpRight size={18} aria-hidden="true" />
+                    </>
+                  )}
+                </Button>
+                <p className="forge-payment-fineprint">
+                  <LockKeyhole size={13} aria-hidden="true" /> Card details are
+                  entered on Stripe Checkout.
+                </p>
               </>
             ) : (
-              <>Pay {formatPrice(order.total || 0)}</>
+              <div className="forge-payment-result">
+                {state === "confirmed" ? (
+                  <CheckCircle2 size={42} aria-hidden="true" />
+                ) : state === "delivery" ? (
+                  <Truck size={42} aria-hidden="true" />
+                ) : (
+                  <AlertCircle size={42} aria-hidden="true" />
+                )}
+                <h2 id="payment-title">
+                  {state === "confirmed"
+                    ? "Payment confirmed."
+                    : state === "delivery"
+                      ? "Pay on delivery."
+                      : state === "missing-total"
+                        ? "Order total needs a refresh."
+                        : state === "closed"
+                          ? "Payment is unavailable for this order."
+                          : "This payment method is unavailable."}
+                </h2>
+                <p>
+                  {state === "confirmed"
+                    ? "Your order already has a confirmed payment. View its current progress and invoice."
+                    : state === "delivery"
+                      ? "Payment will be collected on delivery. No card payment is required here."
+                      : state === "missing-total"
+                        ? "A valid saved total is required before checkout can open. Reload your order details to try again."
+                        : state === "closed"
+                          ? `This order is ${order.status}. Review its current details for next steps.`
+                          : "Review your order details or contact store support for help with payment."}
+                </p>
+                {state === "missing-total" && (
+                  <Button
+                    variant="outline"
+                    disabled={orderQuery.isFetching}
+                    onClick={() => orderQuery.refetch()}
+                  >
+                    <RefreshCw size={16} aria-hidden="true" />
+                    {orderQuery.isFetching ? "Refreshing…" : "Refresh order"}
+                  </Button>
+                )}
+                <Button asChild>
+                  <Link href={orderHref} prefetch={false}>
+                    View your order{" "}
+                    <ArrowUpRight size={16} aria-hidden="true" />
+                  </Link>
+                </Button>
+              </div>
             )}
-          </Button>
-
-          {paymentStatus === "failed" && (
-            <Alert variant="destructive" className="mt-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Payment failed. Please try again or choose a different payment
-                method.
-              </AlertDescription>
-            </Alert>
-          )}
-        </>
+          </section>
+          <aside
+            className="forge-payment-summary"
+            aria-labelledby="payment-summary-title"
+          >
+            <p className="forge-eyebrow">
+              SAVED ORDER / {order.id.slice(0, 8).toUpperCase()}
+            </p>
+            <h2 id="payment-summary-title">Your loadout</h2>
+            <div className="forge-payment-items">
+              {order.items.map((item, index) => (
+                <div key={`${item.productId}-${index}`}>
+                  <Package size={19} aria-hidden="true" />
+                  <span>
+                    <strong>{item.name || "Ordered product"}</strong>
+                    <small>Quantity {item.quantity}</small>
+                  </span>
+                  <b>
+                    {recordedLineTotal(item) !== undefined
+                      ? formatPrice(recordedLineTotal(item)!)
+                      : "Not recorded"}
+                  </b>
+                </div>
+              ))}
+            </div>
+            <dl className="forge-payment-totals">
+              {recordedAmount(order.subtotal) && (
+                <div>
+                  <dt>Subtotal</dt>
+                  <dd>{formatPrice(order.subtotal)}</dd>
+                </div>
+              )}
+              {recordedAmount(order.discount) && order.discount > 0 && (
+                <div>
+                  <dt>Discount</dt>
+                  <dd>−{formatPrice(order.discount)}</dd>
+                </div>
+              )}
+              {recordedAmount(order.shipping) && (
+                <div>
+                  <dt>Shipping</dt>
+                  <dd>
+                    {order.shipping === 0
+                      ? "Free"
+                      : formatPrice(order.shipping)}
+                  </dd>
+                </div>
+              )}
+              {recordedAmount(order.tax) && (
+                <div>
+                  <dt>Tax</dt>
+                  <dd>{formatPrice(order.tax)}</dd>
+                </div>
+              )}
+              <div className="forge-payment-total">
+                <dt>Order total</dt>
+                <dd>
+                  {recordedAmount(order.total)
+                    ? formatPrice(order.total)
+                    : "Not recorded"}
+                </dd>
+              </div>
+            </dl>
+            <p className="forge-payment-summary-note">
+              Amounts come from your saved order. Opening checkout does not
+              create another order.
+            </p>
+            <Link
+              href={orderHref}
+              prefetch={false}
+              className="forge-payment-detail-link"
+            >
+              Review shipping & order details{" "}
+              <ArrowUpRight size={14} aria-hidden="true" />
+            </Link>
+          </aside>
+        </div>
       )}
     </div>
   );

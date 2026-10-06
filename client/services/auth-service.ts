@@ -1,4 +1,5 @@
-import { apiFetch, type ApiResponse } from "@/lib/apiClient";
+import { apiFetch, restoreSession, type ApiResponse } from "@/lib/apiClient";
+import { useAuthStore } from "@/lib/auth-store";
 import type { User } from "@/lib/types";
 
 export type RegisterPayload = {
@@ -57,23 +58,32 @@ export const AuthService = {
   },
 
   logout(): Promise<ApiResponse<{ message: string }>> {
-    return apiFetch("/auth/logout", { method: "GET" });
+    return apiFetch("/auth/logout", { method: "POST" });
   },
 
   verifyEmail(
     token: string
-  ): Promise<ApiResponse<{ message: string; token?: string }>> {
+  ): Promise<ApiResponse<{ message?: string; token?: string; user?: User }>> {
     return apiFetch(`/auth/verify-email/${encodeURIComponent(token)}`, {
       method: "GET",
+      skipAuth: true,
+      skipRefresh: true,
     });
+  },
+
+  resendVerification(payload: {email: string; password: string}): Promise<ApiResponse<{message: string}>> {
+    return apiFetch('/auth/resend-verification', { method: 'POST', body: payload, skipAuth: true, skipRefresh: true });
   },
 
   sendVerificationEmail(): Promise<ApiResponse<{ message: string }>> {
     return apiFetch("/auth/send-verification-email", { method: "POST" });
   },
 
-  refreshToken(): Promise<ApiResponse<{ token: string; user: User }>> {
-    return apiFetch("/auth/refresh", { method: "POST" });
+  async refreshToken(): Promise<ApiResponse<{ token: string; user: User }>> {
+    const token = await restoreSession();
+    const user = useAuthStore.getState().user;
+    return token && user ? { data: { token, user }, error: null, status: 200 }
+      : { data: null, error: { message: "Please sign in again.", status: 401 }, status: 401 };
   },
 
   forgotPassword(
@@ -93,10 +103,11 @@ export const AuthService = {
   },
 
   updatePassword(
-    payload: UpdatePasswordPayload
+    payload: UpdatePasswordPayload, twoFactorToken?: string
   ): Promise<ApiResponse<{ message: string }>> {
     return apiFetch("/auth/update-password", {
       method: "PATCH",
+      headers: twoFactorToken ? {"x-2fa-token": twoFactorToken} : undefined,
       body: payload,
     });
   },

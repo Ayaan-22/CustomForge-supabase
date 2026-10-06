@@ -1,5 +1,4 @@
-import { USE_MOCK_API } from "./mock-config";
-import { mockFetch } from "./mock-handler";
+import type { User } from "./types";
 import { getAccessToken, useAuthStore } from "./auth-store";
 
 export type ApiError = {
@@ -13,36 +12,44 @@ export type ApiResponse<T> = {
   data: T | null;
   error: ApiError | null;
   status: number;
+  pagination?: { page: number; limit: number; total: number };
 };
 
 type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 type RequestOptions = {
   method?: HttpMethod;
-  body?: any;
+  body?: unknown;
   headers?: Record<string, string>;
   signal?: AbortSignal;
   params?: Record<string, string | number | boolean | undefined | null>;
   contentType?: "json" | "form";
   skipAuth?: boolean; // Skip adding Authorization header
   skipRefresh?: boolean; // Skip automatic token refresh on 401
+  skipCsrfRetry?: boolean; // Internal one-retry bound for a rejected CSRF check
 };
+
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 // ============================================
 // URL BUILDER
 // ============================================
 
 function buildUrl(path: string, params?: RequestOptions["params"]) {
-  const base = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/+$/, "");
   const prefixedPath = path.startsWith("/api/")
     ? path
     : `/api/v1${path.startsWith("/") ? path : `/${path}`}`;
-  const url = new URL(
-    `${base}${prefixedPath}`,
+  // Browser API traffic must share the storefront origin so Strict session/CSRF
+  // cookies survive hostname changes. Next forwards /api/v1 to the backend.
+  // Ignore the legacy public API base, including values baked into older builds.
+  const url =
     typeof window !== "undefined"
-      ? window.location.origin
-      : "http://localhost:3000"
-  );
+      ? new URL(prefixedPath, window.location.origin)
+      : new URL(
+          `${(process.env.API_BACKEND_URL || "http://localhost:5000")
+            .replace(/\/+$/, "")
+            .replace(/\/api\/v1$/, "")}${prefixedPath}`,
+        );
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined && v !== null && v !== "")
@@ -69,27 +76,36 @@ async function parseJsonSafe(res: Response) {
 // TOKEN REFRESH
 // ============================================
 
-let isRefreshing = false;
-let refreshSubscribers: ((token: string) => void)[] = [];
+let refreshPromise: Promise<string | null> | null = null;
 
-function subscribeTokenRefresh(callback: (token: string) => void) {
-  refreshSubscribers.push(callback);
-}
-
-function onTokenRefreshed(token: string) {
-  refreshSubscribers.forEach((callback) => callback(token));
-  refreshSubscribers = [];
+export function restoreSession(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = (
+      typeof navigator !== "undefined" && navigator.locks
+        ? navigator.locks
+            .request("customforge-refresh", refreshAccessToken)
+            .then((token) => token)
+        : refreshAccessToken()
+    ).finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise!;
 }
 
 async function refreshAccessToken(): Promise<string | null> {
   try {
+    const csrfToken = await getCsrfToken();
     // Call refresh endpoint - browser automatically sends HttpOnly cookie
     const res = await fetch(buildUrl("/auth/refresh"), {
       method: "POST",
+      signal: AbortSignal.timeout(30_000),
+      cache: "no-store",
       credentials: "include", // CRITICAL: Send HttpOnly cookie
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
+        ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
       },
     });
 
@@ -109,7 +125,7 @@ async function refreshAccessToken(): Promise<string | null> {
 
     if (newToken) {
       // Update Zustand store with new access token
-      const currentUser = useAuthStore.getState().user;
+      const currentUser = data?.data?.user ?? useAuthStore.getState().user;
       if (currentUser) {
         useAuthStore.getState().setAuth(newToken, currentUser);
       }
@@ -124,22 +140,35 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 }
 
+// Session cookies rotate after login, verification and refresh (including other tabs).
+// Always obtain a token for the current cookie binding; never cache it indefinitely.
+async function getCsrfToken(): Promise<string | null> {
+  try {
+    const res = await fetch(buildUrl("/auth/csrf-token"), {
+      cache: "no-store",
+      method: "GET",
+      signal: AbortSignal.timeout(30_000),
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+    if (!res.ok) return null;
+    const data = await parseJsonSafe(res);
+    return data?.data?.csrfToken || data?.csrfToken || null;
+  } catch {
+    return null;
+  }
+}
+
 // ============================================
 // MAIN API FETCH
 // ============================================
 
-export async function apiFetch<T = any>(
+export async function apiFetch<T = unknown>(
   path: string,
-  options: RequestOptions = {}
+  options: RequestOptions = {},
 ): Promise<ApiResponse<T>> {
-  if (USE_MOCK_API) {
-    try {
-      return await mockFetch<T>(path, options);
-    } catch (e) {
-      // Fall through to real fetch if mock handler throws
-    }
-  }
-
   const {
     method = "GET",
     body,
@@ -169,42 +198,52 @@ export async function apiFetch<T = any>(
     }
   }
 
+  if (!SAFE_METHODS.has(method)) {
+    const csrfToken = await getCsrfToken();
+    if (csrfToken) {
+      finalHeaders["X-CSRF-Token"] = csrfToken;
+    }
+  }
+
   try {
     const res = await fetch(url, {
       method,
       credentials: "include", // Always include cookies for refresh token
       headers: finalHeaders,
       body:
-        method === "GET" || method === "DELETE"
+        method === "GET"
           ? undefined
           : isForm
-          ? body
-          : JSON.stringify(body ?? {}),
-      signal,
+            ? (body as FormData)
+            : JSON.stringify(body ?? {}),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(30_000)])
+        : AbortSignal.timeout(30_000),
+      cache: "no-store",
     });
 
     const payload = await parseJsonSafe(res);
 
-    // Handle 401 Unauthorized - attempt token refresh
-    if (res.status === 401 && !skipAuth) {
-      if (!isRefreshing) {
-        isRefreshing = true;
-        const newToken = await refreshAccessToken();
-        isRefreshing = false;
+    // CSRF failures occur before business handlers; retry only that rejection once.
+    if (
+      res.status === 403 &&
+      payload?.code === "CSRF_INVALID" &&
+      !SAFE_METHODS.has(method) &&
+      !options.skipCsrfRetry
+    ) {
+      return apiFetch<T>(path, { ...options, skipCsrfRetry: true });
+    }
 
-        if (newToken) {
-          onTokenRefreshed(newToken);
-          // Retry the original request with new token
-          return apiFetch<T>(path, options);
-        }
-      } else {
-        // Wait for the ongoing refresh
-        return new Promise((resolve) => {
-          subscribeTokenRefresh(() => {
-            resolve(apiFetch<T>(path, options));
-          });
-        });
-      }
+    // All callers settle on refresh failure. Never recursively refresh a refresh.
+    if (
+      res.status === 401 &&
+      !skipAuth &&
+      !options.skipRefresh &&
+      !/2fa|two.factor/i.test(payload?.message || "") &&
+      !new URL(url).pathname.endsWith("/auth/refresh")
+    ) {
+      const newToken = await restoreSession();
+      if (newToken) return apiFetch<T>(path, { ...options, skipRefresh: true });
     }
 
     // Handle 403 Forbidden - check if it's email verification issue
@@ -227,12 +266,17 @@ export async function apiFetch<T = any>(
     if (!res.ok && res.status !== 304) {
       const error: ApiError = {
         message:
+          (res.status >= 500
+            ? "The service is unavailable. Please try again shortly."
+            : null) ||
           (payload && (payload.message || payload.error)) ||
           `Request failed with ${res.status}`,
         status: res.status,
         details: payload,
         is2FARequired:
-          res.status === 401 && res.headers.get("x-2fa-required") === "true",
+          res.status === 401 &&
+          (res.headers.get("x-2fa-required") === "true" ||
+            /2fa|two.factor/i.test(payload?.message || "")),
       };
       return { data: null, error, status: res.status };
     }
@@ -257,10 +301,29 @@ export async function apiFetch<T = any>(
       }
     }
 
-    return { data: responseData as T, error: null, status: res.status };
+    if (responseData?.token && responseData?.user)
+      useAuthStore.getState().setAuth(responseData.token, responseData.user);
+    return {
+      data: responseData as T,
+      error: null,
+      status: res.status,
+      ...(typeof payload?.total === "number" ||
+      typeof payload?.count === "number"
+        ? {
+            pagination: {
+              page: payload.page ?? 1,
+              limit: payload.limit ?? 20,
+              total: payload.total ?? payload.count,
+            },
+          }
+        : {}),
+    };
   } catch (e: any) {
     const error: ApiError = {
-      message: e?.message || "Network error",
+      message:
+        e?.name === "TimeoutError"
+          ? "The request timed out. Please retry."
+          : "Unable to connect to the server. Please check your connection and retry.",
       status: 0,
       details: e,
     };
@@ -275,14 +338,13 @@ export async function apiFetch<T = any>(
 export function storeAuthTokens(data: {
   token?: string;
   accessToken?: string;
-  user?: any;
+  user?: User;
 }) {
   const token = data.token || data.accessToken;
 
   if (token && data.user) {
     // Store access token and user in Zustand (in-memory)
     useAuthStore.getState().setAuth(token, data.user);
-    console.log("Auth tokens stored in memory");
   } else {
     console.warn("storeAuthTokens: Missing token or user data");
   }

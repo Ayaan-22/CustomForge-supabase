@@ -1,4 +1,5 @@
 // File: server/routes/cartRoutes.js
+// Mount: /api/v1/cart — all routes require authentication (per-user cart).
 import express from "express";
 import {
   getCart,
@@ -9,12 +10,13 @@ import {
   applyCoupon,
   removeCoupon,
 } from "../controllers/cartController.js";
-import { protect } from "../middleware/authMiddleware.js";
+import { protect, verifiedEmail } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// All cart routes require authentication
+// All cart routes require a logged-in, verified account (login already gates verification).
 router.use(protect);
+router.use(verifiedEmail);
 
 /**
  * CART CRUD

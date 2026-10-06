@@ -1,5 +1,16 @@
 // server/models/Product.js
-import { supabase } from "../config/db.js";
+import { PRODUCT_FIELDS } from "../utils/storefrontFields.js";
+import AppError from "../utils/appError.js";
+
+export function catalogPrice(price, discount = 0) {
+  const amount = Number(price), percent = Number(discount);
+  if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(percent) || percent < 0 || percent > 100) throw new AppError("Invalid product price or discount", 400);
+  return Math.round(amount * (1 - percent / 100) * 100) / 100;
+}
+const requireClient = (client) => {
+  if (!client) throw new Error("Supabase client is required");
+  return client;
+};
 
 /* ===========================================================
    MAP HELPERS
@@ -41,7 +52,8 @@ export const mapProductsRows = (rows) =>
    BASIC CRUD
 =========================================================== */
 
-export const createProduct = async (payload) => {
+export const createProduct = async (payload, client) => {
+  const db = requireClient(client);
   const dataToInsert = {
     name: payload.name,
     category: payload.category,
@@ -49,9 +61,9 @@ export const createProduct = async (payload) => {
     specifications: payload.specifications ?? null,
     original_price: payload.originalPrice,
     discount_percentage: payload.discountPercentage ?? 0,
-    final_price: payload.finalPrice ?? null,
+    final_price: catalogPrice(payload.originalPrice, payload.discountPercentage),
     stock: payload.stock ?? 0,
-    availability: payload.availability ?? "In Stock",
+    availability: Number(payload.stock ?? 0) > 0 ? "In Stock" : "Out of Stock",
     images: payload.images ?? [],
     description: payload.description,
     ratings: payload.ratings ?? { average: 0, totalReviews: 0 },
@@ -65,7 +77,7 @@ export const createProduct = async (payload) => {
     sales_count: payload.salesCount ?? 0,
   };
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("products")
     .insert([dataToInsert])
     .select()
@@ -75,10 +87,11 @@ export const createProduct = async (payload) => {
   return mapProductRow(data);
 };
 
-export const getProductById = async (id) => {
-  const { data, error } = await supabase
+export const getProductById = async (id, client) => {
+  const db = requireClient(client);
+  const { data, error } = await db
     .from("products")
-    .select("*")
+    .select(PRODUCT_FIELDS)
     .eq("id", id)
     .maybeSingle();
 
@@ -87,7 +100,16 @@ export const getProductById = async (id) => {
   return mapProductRow(data);
 };
 
-export const updateProduct = async (id, updates) => {
+export const updateProduct = async (id, updates, client) => {
+  const db = requireClient(client);
+  if (updates.originalPrice !== undefined || updates.discountPercentage !== undefined) {
+    const existing = await getProductById(id, db);
+    if (!existing) throw new AppError("Product not found", 404);
+    updates = {...updates, finalPrice: catalogPrice(updates.originalPrice ?? existing.originalPrice, updates.discountPercentage ?? existing.discountPercentage)};
+  } else {
+    updates = {...updates};
+    delete updates.finalPrice; // Derived value is never accepted from an API caller.
+  }
   const dbUpdates = {
     name: updates.name,
     category: updates.category,
@@ -97,7 +119,7 @@ export const updateProduct = async (id, updates) => {
     discount_percentage: updates.discountPercentage,
     final_price: updates.finalPrice,
     stock: updates.stock,
-    availability: updates.availability,
+    availability: updates.stock === undefined ? updates.availability : Number(updates.stock) > 0 ? "In Stock" : "Out of Stock",
     images: updates.images,
     description: updates.description,
     ratings: updates.ratings,
@@ -116,7 +138,7 @@ export const updateProduct = async (id, updates) => {
     (key) => dbUpdates[key] === undefined && delete dbUpdates[key]
   );
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("products")
     .update(dbUpdates)
     .eq("id", id)
@@ -127,15 +149,17 @@ export const updateProduct = async (id, updates) => {
   return mapProductRow(data);
 };
 
-export const deleteProduct = async (id) => {
-  const { error } = await supabase.from("products").delete().eq("id", id);
+export const deleteProduct = async (id, client) => {
+  const db = requireClient(client);
+  const { error } = await db.from("products").delete().eq("id", id);
 
   if (error) throw new Error(error.message);
   return true;
 };
 
-export const getAllProductsForAdmin = async () => {
-  const { data, error } = await supabase.from("products").select("*");
+export const getAllProductsForAdmin = async (client) => {
+  const db = requireClient(client);
+  const { data, error } = await db.from("products").select("*");
   if (error) throw new Error(error.message);
   return mapProductsRows(data);
 };
@@ -144,8 +168,9 @@ export const getAllProductsForAdmin = async () => {
    STOCK & SALES RPC
 =========================================================== */
 
-export const changeStock = async (productId, delta) => {
-  const { data, error } = await supabase.rpc("change_stock", {
+export const changeStock = async (productId, delta, client) => {
+  const db = requireClient(client);
+  const { data, error } = await db.rpc("change_stock", {
     p_product_id: productId,
     p_delta: delta,
   });
@@ -153,26 +178,38 @@ export const changeStock = async (productId, delta) => {
   if (error) throw new Error(error.message);
   
   // Return the updated product (optional fetch if UI needs it, but RPC doesn't return the row in this implementation)
-  return getProductById(productId);
+  return getProductById(productId, db);
 };
 
-export const increaseSales = async (productId, qty) => {
-  const { data, error } = await supabase.rpc("increase_sales", {
+export const increaseSales = async (productId, qty, client) => {
+  const db = requireClient(client);
+  const { data, error } = await db.rpc("increase_sales", {
     p_product_id: productId,
     p_qty: qty,
   });
 
   if (error) throw new Error(error.message);
   
-  return getProductById(productId);
+  return getProductById(productId, db);
+};
+
+export const batchChangeStock = async (updates, client) => {
+  const db = requireClient(client);
+  const payload = Array.isArray(updates) ? updates : [];
+  const { error } = await db.rpc("batch_change_stock", {
+    p_updates: payload,
+  });
+  if (error) throw new Error(error.message);
+  return true;
 };
 
 /* ===========================================================
    RATINGS RECALCULATION
 =========================================================== */
 
-export const recalcProductRatings = async (productId) => {
-  const { data: reviews, error: reviewError } = await supabase
+export const recalcProductRatings = async (productId, client) => {
+  const db = requireClient(client);
+  const { data: reviews, error: reviewError } = await db
     .from("reviews")
     .select("rating")
     .eq("product_id", productId)
@@ -190,7 +227,7 @@ export const recalcProductRatings = async (productId) => {
 
   const ratings = { average, totalReviews };
 
-  const { error: updateError } = await supabase
+  const { error: updateError } = await db
     .from("products")
     .update({ ratings })
     .eq("id", productId);

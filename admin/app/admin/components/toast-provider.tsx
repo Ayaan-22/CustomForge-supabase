@@ -60,12 +60,12 @@ function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: 
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`flex items-center gap-3 px-4 py-3 rounded-lg text-white animate-in fade-in slide-in-from-right ${
+          className={`fa-legacy-toast flex items-center gap-3 px-4 py-3 rounded-lg animate-in fade-in slide-in-from-right ${
             toast.type === "success"
-              ? "bg-green-500/20 border border-green-500/50"
+              ? "is-success"
               : toast.type === "error"
-                ? "bg-red-500/20 border border-red-500/50"
-                : "bg-blue-500/20 border border-blue-500/50"
+                ? "is-danger"
+                : "is-info"
           }`}
         >
           <span className="text-sm">{toast.message}</span>
