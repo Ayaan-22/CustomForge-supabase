@@ -6,15 +6,16 @@ import { AdminThemeSwitch } from "@/components/admin-theme-switch";
 import "@/app/forge-auth.css";
 
 /** Shared public auth layout; decorative artwork never implies live store data. */
-export function AdminAuthShell({ eyebrow, title, description, children, footer, back = false }: {
+export function AdminAuthShell({ eyebrow, title, description, children, footer, back = false, variant = "default" }: {
   eyebrow: string;
   title: string;
   description: string;
   children: ReactNode;
   footer?: ReactNode;
   back?: boolean;
+  variant?: "default" | "register";
 }) {
-  return <main id="admin-main-content" className="faa-shell" tabIndex={-1}>
+  return <main id="admin-main-content" className={`faa-shell${variant === "register" ? " faa-shell-register" : ""}`} tabIndex={-1}>
     <AdminThemeSwitch className="faa-theme-switch" />
     <section className="faa-story" aria-label="CustomForge admin workspace">
       <AdminBrand />
