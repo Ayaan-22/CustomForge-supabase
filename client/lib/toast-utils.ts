@@ -6,18 +6,11 @@ import type { ApiError } from "./apiClient";
  */
 export function showError(error: ApiError | Error | string) {
   let message: string;
-  let description: string | undefined;
 
   if (typeof error === "string") {
     message = error;
   } else if ("message" in error) {
     message = error.message;
-    if ("details" in error && error.details) {
-      description =
-        typeof error.details === "string"
-          ? error.details
-          : JSON.stringify(error.details);
-    }
   } else {
     message = "An unexpected error occurred";
   }
@@ -32,7 +25,7 @@ export function showError(error: ApiError | Error | string) {
 /**
  * Display a success message using toast notifications
  */
-export function showSuccess(message: string, description?: string) {
+export function showSuccess(message: string, _description?: string) {
   toast({
     title: "Success",
     description: message,
@@ -42,7 +35,7 @@ export function showSuccess(message: string, description?: string) {
 /**
  * Display an info message using toast notifications
  */
-export function showInfo(message: string, description?: string) {
+export function showInfo(message: string, _description?: string) {
   toast({
     title: "Info",
     description: message,
@@ -52,7 +45,7 @@ export function showInfo(message: string, description?: string) {
 /**
  * Display a warning message using toast notifications
  */
-export function showWarning(message: string, description?: string) {
+export function showWarning(message: string, _description?: string) {
   toast({
     variant: "destructive",
     title: "Warning",

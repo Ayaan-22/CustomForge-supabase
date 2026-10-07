@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import {useQueryClient} from "@tanstack/react-query";
@@ -37,28 +37,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { user, accessToken, requiresTwoFactor, setRequiresTwoFactor } =
     useAuthStore();
 
-  const checkAuth = async () => {
-    try {
-      const response = await authClient.refreshToken();
-      if (response.data?.user) {
-        if (response.data.user.role !== "admin") {
-          throw new Error("Access denied: Admin role required");
-        }
-        useAuthStore.getState().setUser(response.data.user);
-        useAuthStore.getState().setToken(response.token);
-      }
-    } catch (error) {
-      useAuthStore.getState().clearAuth();
-      if (pathname?.startsWith("/admin")) {
-        router.push("/login");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  const initialNavigation = useRef({ pathname, router });
 
   useEffect(() => {
-    checkAuth();
+    const { pathname, router } = initialNavigation.current;
+    const checkAuth = async () => {
+      try {
+        const response = await authClient.refreshToken();
+        if (response.data?.user) {
+          if (response.data.user.role !== "admin") {
+            throw new Error("Access denied: Admin role required");
+          }
+          useAuthStore.getState().setUser(response.data.user);
+          useAuthStore.getState().setToken(response.token);
+        }
+      } catch {
+        useAuthStore.getState().clearAuth();
+        if (pathname?.startsWith("/admin")) {
+          router.push("/login");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void checkAuth();
   }, []);
 
   const login = async (data: Parameters<typeof authClient.login>[0]) => {
@@ -79,7 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       router.push("/admin/dashboard");
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof ApiError && err.code === "2FA_REQUIRED") {
         setRequiresTwoFactor(true);
       } else {

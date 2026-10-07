@@ -1,6 +1,6 @@
 "use client";
 import { useUrlState } from "@/hooks/use-url-state";
-import type { AdminProduct } from "@/types/admin";
+import type { AdminProduct, AdminProductPayload } from "@/types/admin";
 import { useAdminMutation } from "@/hooks/use-admin-mutation";
 import { useConfirmation } from "@/hooks/use-confirmation";
 
@@ -75,8 +75,8 @@ export default function ProductsPage() {
 
   const [view, setView] = useState<"grid" | "list">("grid");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<any>(null);
-  const [detailsProduct, setDetailsProduct] = useState<any>(null);
+  const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
+  const [detailsProduct, setDetailsProduct] = useState<AdminProduct | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
   const search = useDebouncedValue(searchTerm);
@@ -91,7 +91,7 @@ export default function ProductsPage() {
   const fetchProducts = () => { void listQuery.refetch(); void statsQuery.refetch(); };
 
 
-  const handleAddProduct = async (newProduct: any) => {
+  const handleAddProduct = async (newProduct: AdminProductPayload) => {
     try {
       if (editingProduct) {
         await runMutation(() => apiClient.updateProduct(editingProduct.id, newProduct));
@@ -109,10 +109,10 @@ export default function ProductsPage() {
       setIsModalOpen(false);
       setEditingProduct(null);
       fetchProducts();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Failed to save product",
+        description: ((error instanceof Error && error.message) || "Failed to save product"),
         variant: "destructive",
       });
     }
@@ -127,10 +127,10 @@ export default function ProductsPage() {
           description: "Product deleted successfully",
         });
         fetchProducts();
-      } catch (error: any) {
+      } catch (error: unknown) {
         toast({
           title: "Error",
-          description: error.message || "Failed to delete product",
+          description: ((error instanceof Error && error.message) || "Failed to delete product"),
           variant: "destructive",
         });
       }
@@ -142,21 +142,21 @@ export default function ProductsPage() {
       await runMutation(() => apiClient.toggleProductActive(id));
       toast({ title: "Success", description: "Product status updated" });
       fetchProducts();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Failed to update product status",
+        description: ((error instanceof Error && error.message) || "Failed to update product status"),
         variant: "destructive",
       });
     }
   };
 
-  const handleEditProduct = (product: any) => {
+  const handleEditProduct = (product: AdminProduct) => {
     setEditingProduct(product);
     setIsModalOpen(true);
   };
 
-  const handleViewDetails = (product: any) => {
+  const handleViewDetails = (product: AdminProduct) => {
     setDetailsProduct(product);
     setIsDetailsOpen(true);
   };

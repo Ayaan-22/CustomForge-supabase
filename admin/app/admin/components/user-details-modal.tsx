@@ -5,22 +5,23 @@ import { useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Shield, Lock, Mail, CheckCircle, User } from "lucide-react"
 import { format } from "date-fns"
+import type { AdminUserPaymentMethod } from "@/types/admin"
 
 interface UserDetails {
   id: string
   name: string
   email: string
-  role: "user" | "publisher" | "admin"
-  avatar: string
+  role: string
+  avatar?: string
   phone?: string
   address?: string
   is_email_verified: boolean
   two_factor_enabled: boolean
   active: boolean
   stripe_customer_id?: string
-  payment_methods?: any[]
+  payment_methods?: AdminUserPaymentMethod[]
   created_at: string
-  updated_at: string
+  updated_at?: string
 }
 
 interface UserDetailsModalProps {

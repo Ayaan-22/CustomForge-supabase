@@ -15,9 +15,8 @@ export function ProtectedRoute({
   children,
   requireAuth = true,
   requireEmailVerification = false,
-  require2FA = false,
 }: ProtectedRouteProps) {
-  const { isAuthenticated, isEmailVerified, user, isLoading } = useAuth();
+  const { isAuthenticated, isEmailVerified, isLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 

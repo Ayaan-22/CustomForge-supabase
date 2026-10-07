@@ -1,6 +1,7 @@
 "use client";
 
 import type React from "react";
+import type { AdminProduct, AdminProductPayload } from "@/types/admin";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,11 +47,28 @@ const PRODUCT_CATEGORIES = [
   "VRGames",
 ];
 
+type ProductFormData = Omit<AdminProductPayload,
+  'originalPrice' | 'discountPercentage' | 'stock' | 'weight' | 'dimensions' | 'imageFiles'
+> & {
+  originalPrice: string | number;
+  discountPercentage: string | number;
+  stock: string | number;
+  weight: string | number;
+  dimensions: { length: string | number; width: string | number; height: string | number };
+  imageFiles: File[];
+};
+
+type ProductInitialData = Omit<Partial<AdminProduct>, 'specifications' | 'features' | 'dimensions'> & {
+  specifications?: AdminProduct['specifications'] | string;
+  features?: AdminProduct['features'] | string;
+  dimensions?: AdminProduct['dimensions'] | string;
+};
+
 interface ProductModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (product: any) => Promise<void>;
-  initialData?: any;
+  onSubmit: (product: AdminProductPayload) => Promise<void>;
+  initialData?: ProductInitialData | null;
   isEditing?: boolean;
 }
 
@@ -61,7 +79,7 @@ export function ProductModal({
   initialData,
   isEditing,
 }: ProductModalProps) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<ProductFormData>({
     name: "",
     sku: "",
     category: "CPU",
@@ -156,7 +174,7 @@ export function ProductModal({
     >
   ) => {
     const { name, value, type } = e.target;
-    setFormData((prev: any) => ({
+    setFormData((prev) => ({
       ...prev,
       [name]:
         type === "checkbox" ? (e.target as HTMLInputElement).checked : value,
@@ -165,7 +183,7 @@ export function ProductModal({
 
   const handleDimensionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData((prev: any) => ({
+    setFormData((prev) => ({
       ...prev,
       dimensions: {
         ...prev.dimensions,
@@ -176,7 +194,7 @@ export function ProductModal({
 
   const addImage = () => {
     if (newImage.trim()) {
-      setFormData((prev: any) => ({
+      setFormData((prev) => ({
         ...prev,
         images: [...prev.images, newImage],
       }));
@@ -185,15 +203,15 @@ export function ProductModal({
   };
 
   const removeImage = (index: number) => {
-    setFormData((prev: any) => ({
+    setFormData((prev) => ({
       ...prev,
-      images: prev.images.filter((_: any, i: number) => i !== index),
+      images: prev.images.filter((_, i) => i !== index),
     }));
   };
 
   const addSpecification = () => {
     if (newSpec.key.trim() && newSpec.value.trim()) {
-      setFormData((prev: any) => ({
+      setFormData((prev) => ({
         ...prev,
         specifications: [...prev.specifications, newSpec],
       }));
@@ -202,17 +220,17 @@ export function ProductModal({
   };
 
   const removeSpecification = (index: number) => {
-    setFormData((prev: any) => ({
+    setFormData((prev) => ({
       ...prev,
       specifications: prev.specifications.filter(
-        (_: any, i: number) => i !== index
+        (_, i) => i !== index
       ),
     }));
   };
 
   const addFeature = () => {
     if (newFeature.trim()) {
-      setFormData((prev: any) => ({
+      setFormData((prev) => ({
         ...prev,
         features: [...prev.features, newFeature],
       }));
@@ -221,9 +239,9 @@ export function ProductModal({
   };
 
   const removeFeature = (index: number) => {
-    setFormData((prev: any) => ({
+    setFormData((prev) => ({
       ...prev,
-      features: prev.features.filter((_: any, i: number) => i !== index),
+      features: prev.features.filter((_, i) => i !== index),
     }));
   };
 
@@ -263,19 +281,19 @@ export function ProductModal({
 
     const submitData = {
       ...formData,
-      originalPrice: Number.parseFloat(formData.originalPrice),
+      originalPrice: Number.parseFloat(String(formData.originalPrice)),
       discountPercentage: Number(formData.discountPercentage),
-      stock: Number.parseInt(formData.stock),
-      weight: formData.weight ? Number.parseFloat(formData.weight) : undefined,
+      stock: Number.parseInt(String(formData.stock)),
+      weight: formData.weight ? Number.parseFloat(String(formData.weight)) : undefined,
       dimensions: {
         length: formData.dimensions.length
-          ? Number.parseFloat(formData.dimensions.length)
+          ? Number.parseFloat(String(formData.dimensions.length))
           : undefined,
         width: formData.dimensions.width
-          ? Number.parseFloat(formData.dimensions.width)
+          ? Number.parseFloat(String(formData.dimensions.width))
           : undefined,
         height: formData.dimensions.height
-          ? Number.parseFloat(formData.dimensions.height)
+          ? Number.parseFloat(String(formData.dimensions.height))
           : undefined,
       },
     };
@@ -365,7 +383,7 @@ export function ProductModal({
                 files.forEach((file) => {
                   if (file.size > 5 * 1024 * 1024) { setUploadError(`${file.name} is too large. Maximum file size is 5 MB.`); return; }
                   const reader = new FileReader();
-                  reader.onloadend = () => { setFormData((prev: any) => ({ ...prev, images: [...prev.images, reader.result], imageFiles: [...(prev.imageFiles || []), file] })); };
+                  reader.onloadend = () => { setFormData((prev) => ({ ...prev, images: [...prev.images, reader.result as string], imageFiles: [...(prev.imageFiles || []), file] })); };
                   reader.readAsDataURL(file);
                 });
                 e.target.value = "";
@@ -398,7 +416,7 @@ export function ProductModal({
                 </Button>
               </div>
             </div>
-            <div className="fc-editor-list">{formData.specifications.map((spec: any, idx: number) =>
+            <div className="fc-editor-list">{formData.specifications.map((spec, idx) =>
               <div className="fc-editor-list-row" key={idx}>
                 <span>
                   <strong>{spec.key}</strong> · {spec.value}</span>

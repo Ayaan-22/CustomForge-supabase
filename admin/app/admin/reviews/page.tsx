@@ -99,11 +99,11 @@ export default function ReviewsPage() {
         await runMutation(() => apiClient.deleteReview(reviewId));
         toast({ title: "Success", description: "Review deleted successfully" });
         fetchReviews();
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("Failed to delete review:", err);
         toast({
           title: "Error",
-          description: err.message || "Failed to delete review",
+          description: ((err instanceof Error && err.message) || "Failed to delete review"),
           variant: "destructive",
         });
       }
@@ -249,10 +249,10 @@ export default function ReviewsPage() {
               });
               setShowDetailsModal(false);
               fetchReviews();
-            } catch (error: any) {
+            } catch (error: unknown) {
               toast({
                 title: "Error",
-                description: error.message || "Failed to moderate review",
+                description: ((error instanceof Error && error.message) || "Failed to moderate review"),
                 variant: "destructive",
               });
             }

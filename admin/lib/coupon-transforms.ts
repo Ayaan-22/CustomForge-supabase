@@ -11,11 +11,11 @@ export interface Coupon {
   discountValue: number;
   validFrom: string | null;
   validTo: string | null;
-  minPurchase?: number;
-  maxDiscount?: number;
+  minPurchase?: number | null;
+  maxDiscount?: number | null;
   isActive: boolean;
-  usageLimit?: number;
-  timesUsed?: number;
+  usageLimit?: number | null;
+  timesUsed?: number | null;
   perUserLimit?: number;
   applicableProducts?: string[];
   excludedProducts?: string[];
@@ -32,11 +32,11 @@ export interface CouponPayload {
   discountValue: number;
   validFrom: string | null;
   validTo: string | null;
-  minPurchase?: number;
-  maxDiscount?: number;
+  minPurchase?: number | null;
+  maxDiscount?: number | null;
   isActive: boolean;
-  usageLimit?: number;
-  timesUsed?: number;
+  usageLimit?: number | null;
+  timesUsed?: number | null;
   perUserLimit?: number;
   applicableProducts?: string[];
   excludedProducts?: string[];
@@ -44,6 +44,27 @@ export interface CouponPayload {
   createdAt?: string;
   updatedAt?: string;
 }
+
+type CouponFieldAliases = {
+  discountType: 'discount_type';
+  discountValue: 'discount_value';
+  validFrom: 'valid_from';
+  validTo: 'valid_to';
+  minPurchase: 'min_purchase';
+  maxDiscount: 'max_discount';
+  isActive: 'is_active';
+  usageLimit: 'usage_limit';
+  timesUsed: 'times_used';
+  perUserLimit: 'per_user_limit';
+  applicableProducts: 'applicable_products';
+  excludedProducts: 'excluded_products';
+  createdAt: 'created_at';
+  updatedAt: 'updated_at';
+};
+
+type CouponRow = {
+  [K in keyof CouponPayload as K extends keyof CouponFieldAliases ? CouponFieldAliases[K] : K]: CouponPayload[K];
+};
 
 /**
  * Map frontend discount type to backend format
@@ -88,12 +109,12 @@ export function validateDateFormat(date: string): string {
  */
 export function transformCouponToBackend(coupon: Coupon): CouponPayload {
   // Create a shallow copy to avoid mutating the original
-  const payload: any = { ...coupon };
-
-  // Map discount type
-  if (coupon.discountType) {
-    payload.discountType = mapDiscountTypeToBackend(coupon.discountType);
-  }
+  const payload: CouponPayload = {
+    ...coupon,
+    discountType: coupon.discountType
+      ? mapDiscountTypeToBackend(coupon.discountType)
+      : coupon.discountType,
+  };
 
   // Validate date formats
   if (payload.validFrom) {
@@ -103,7 +124,7 @@ export function transformCouponToBackend(coupon: Coupon): CouponPayload {
     payload.validTo = validateDateFormat(payload.validTo);
   }
 
-  return payload as CouponPayload;
+  return payload;
 }
 
 /**
@@ -111,36 +132,30 @@ export function transformCouponToBackend(coupon: Coupon): CouponPayload {
  * @param payload Backend coupon payload (or raw DB response which might be snake_case)
  * @returns Frontend coupon object
  */
-export function transformCouponToFrontend(payload: any): Coupon {
-  // Handle potential snake_case from raw DB responses if they bypass the controller transformation
-  // or if the controller returns raw DB objects.
-  const coupon: any = {};
+export function transformCouponToFrontend(payload: CouponPayload | CouponRow): Coupon {
+  // Accept either controller fields or raw database fields, preferring camelCase.
+  const fields = payload as Partial<CouponPayload & CouponRow>;
+  const get = <K extends keyof CouponFieldAliases>(camel: K, snake: CouponFieldAliases[K]): CouponPayload[K] =>
+    (fields[camel] !== undefined ? fields[camel] : fields[snake]) as CouponPayload[K];
 
-  // Helper to get value from camelCase OR snake_case
-  const get = (camel: string, snake: string) =>
-    payload[camel] !== undefined ? payload[camel] : payload[snake];
-
-  coupon.id = payload.id;
-  coupon.code = payload.code;
-
-  // Discount Type
   const rawType = get("discountType", "discount_type");
-  coupon.discountType = rawType ? mapDiscountTypeToFrontend(rawType) : "fixed";
-
-  coupon.discountValue = get("discountValue", "discount_value");
-  coupon.validFrom = get("validFrom", "valid_from");
-  coupon.validTo = get("validTo", "valid_to");
-  coupon.minPurchase = get("minPurchase", "min_purchase");
-  coupon.maxDiscount = get("maxDiscount", "max_discount");
-  coupon.isActive = get("isActive", "is_active");
-  coupon.usageLimit = get("usageLimit", "usage_limit");
-  coupon.timesUsed = get("timesUsed", "times_used");
-  coupon.perUserLimit = get("perUserLimit", "per_user_limit");
-  coupon.applicableProducts = get("applicableProducts", "applicable_products");
-  coupon.excludedProducts = get("excludedProducts", "excluded_products");
-  coupon.description = payload.description;
-  coupon.createdAt = get("createdAt", "created_at");
-  coupon.updatedAt = get("updatedAt", "updated_at");
-
-  return coupon as Coupon;
+  return {
+    id: payload.id,
+    code: payload.code,
+    discountType: rawType ? mapDiscountTypeToFrontend(rawType) : "fixed",
+    discountValue: get("discountValue", "discount_value"),
+    validFrom: get("validFrom", "valid_from"),
+    validTo: get("validTo", "valid_to"),
+    minPurchase: get("minPurchase", "min_purchase"),
+    maxDiscount: get("maxDiscount", "max_discount"),
+    isActive: get("isActive", "is_active"),
+    usageLimit: get("usageLimit", "usage_limit"),
+    timesUsed: get("timesUsed", "times_used"),
+    perUserLimit: get("perUserLimit", "per_user_limit"),
+    applicableProducts: get("applicableProducts", "applicable_products"),
+    excludedProducts: get("excludedProducts", "excluded_products"),
+    description: payload.description,
+    createdAt: get("createdAt", "created_at"),
+    updatedAt: get("updatedAt", "updated_at"),
+  };
 }

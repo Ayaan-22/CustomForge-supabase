@@ -12,7 +12,7 @@ import {
 } from "./coupon-transforms";
 
 import {productFromRow, type ProductRow} from './product-transform';
-import type {Page} from '@/types/admin';
+import type {Page, AdminProductPayload, AdminUserPayload} from '@/types/admin';
 import type {LogPage, LogStats} from '@/types/logs';
 import { API_BASE as ROOT_API_BASE, request as fetchWithAuth } from './transport';
 const API_BASE = ROOT_API_BASE + '/admin';
@@ -103,7 +103,7 @@ export const apiClient = {
     return body.data;
   },
 
-  createUser: async (data: Record<string, any>) => {
+  createUser: async (data: AdminUserPayload) => {
     const response = await fetchWithAuth(`${API_BASE}/users`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -113,7 +113,7 @@ export const apiClient = {
     return response.json();
   },
 
-  updateUser: async (id: string, data: Record<string, any>) => {
+  updateUser: async (id: string, data: AdminUserPayload) => {
     const response = await fetchWithAuth(`${API_BASE}/users/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -178,30 +178,31 @@ export const apiClient = {
     return {...page, data: page.data.map(productFromRow)};
   },
 
-  createProduct: async (data: Record<string, any>) => {
+  createProduct: async (data: AdminProductPayload) => {
 
     // Check if we have file uploads
-    const hasFiles = data.imageFiles && data.imageFiles.length > 0;
+    const imageFiles = data.imageFiles;
+    const hasFiles = imageFiles && imageFiles.length > 0;
 
     if (hasFiles) {
       // Use FormData for file uploads
       const formData = new FormData();
 
       // Append all fields
-      Object.keys(data).forEach((key) => {
+      Object.entries(data).forEach(([key, value]) => {
         if (key === "imageFiles") {
           // Append files
-          data.imageFiles.forEach((file: File) => {
+          imageFiles.forEach((file: File) => {
             formData.append("images", file);
           });
         } else if (key === "images") {
           // Keep retained URLs; file previews are not database images.
           formData.append("images", JSON.stringify(data.images.filter((image: string) => image.startsWith("https://"))));
-        } else if (typeof data[key] === "object" && data[key] !== null) {
+        } else if (typeof value === "object" && value !== null) {
           // Stringify objects (specifications, features, dimensions)
-          formData.append(key, JSON.stringify(data[key]));
-        } else if (data[key] !== undefined && data[key] !== null) {
-          formData.append(key, String(data[key]));
+          formData.append(key, JSON.stringify(value));
+        } else if (value !== undefined && value !== null) {
+          formData.append(key, String(value));
         }
       });
 
@@ -223,30 +224,31 @@ export const apiClient = {
     }
   },
 
-  updateProduct: async (id: string, data: Record<string, any>) => {
+  updateProduct: async (id: string, data: AdminProductPayload) => {
 
     // Check if we have file uploads
-    const hasFiles = data.imageFiles && data.imageFiles.length > 0;
+    const imageFiles = data.imageFiles;
+    const hasFiles = imageFiles && imageFiles.length > 0;
 
     if (hasFiles) {
       // Use FormData for file uploads
       const formData = new FormData();
 
       // Append all fields
-      Object.keys(data).forEach((key) => {
+      Object.entries(data).forEach(([key, value]) => {
         if (key === "imageFiles") {
           // Append files
-          data.imageFiles.forEach((file: File) => {
+          imageFiles.forEach((file: File) => {
             formData.append("images", file);
           });
         } else if (key === "images") {
           // Keep retained URLs; file previews are not database images.
           formData.append("images", JSON.stringify(data.images.filter((image: string) => image.startsWith("https://"))));
-        } else if (typeof data[key] === "object" && data[key] !== null) {
+        } else if (typeof value === "object" && value !== null) {
           // Stringify objects (specifications, features, dimensions)
-          formData.append(key, JSON.stringify(data[key]));
-        } else if (data[key] !== undefined && data[key] !== null) {
-          formData.append(key, String(data[key]));
+          formData.append(key, JSON.stringify(value));
+        } else if (value !== undefined && value !== null) {
+          formData.append(key, String(value));
         }
       });
 
@@ -468,10 +470,10 @@ export const apiClient = {
     return transformCouponToFrontend(data);
   },
 
-  createCoupon: async (data: Record<string, any>) => {
+  createCoupon: async (data: Coupon) => {
 
     // Transform frontend data to backend format
-    const backendPayload = transformCouponToBackend(data as Coupon);
+    const backendPayload = transformCouponToBackend(data);
 
     const response = await fetchWithAuth(`${API_BASE}/coupons`, {
       method: "POST",
@@ -494,10 +496,10 @@ export const apiClient = {
     return result;
   },
 
-  updateCoupon: async (id: string, data: Record<string, any>) => {
+  updateCoupon: async (id: string, data: Coupon) => {
 
     // Transform frontend data to backend format
-    const backendPayload = transformCouponToBackend(data as Coupon);
+    const backendPayload = transformCouponToBackend(data);
 
     const response = await fetchWithAuth(`${API_BASE}/coupons/${id}`, {
       method: "PATCH",

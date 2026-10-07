@@ -85,10 +85,10 @@ export default function OrdersPage() {
       }
       toast({ title: "Success", description: `Order marked as ${status}` });
       fetchOrders();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Failed to update order status",
+        description: ((error instanceof Error && error.message) || "Failed to update order status"),
         variant: "destructive",
       });
     } finally {
@@ -103,10 +103,10 @@ export default function OrdersPage() {
       await runMutation(() => apiClient.approveReturn(id));
       toast({ title: "Success", description: "Return approved for review. Refund and inventory reconciliation are still required." });
       fetchOrders();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Failed to process return",
+        description: ((error instanceof Error && error.message) || "Failed to process return"),
         variant: "destructive",
       });
     } finally {

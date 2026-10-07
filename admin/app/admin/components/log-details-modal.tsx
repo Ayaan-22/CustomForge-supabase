@@ -3,6 +3,7 @@ import "../forge-operations.css";
 import { useRef } from "react";
 
 import type React from "react"
+import type { LogEntry } from "@/types/logs"
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { AlertCircle, AlertTriangle, Info } from "lucide-react"
@@ -10,7 +11,7 @@ import { AlertCircle, AlertTriangle, Info } from "lucide-react"
 interface LogDetailsModalProps {
   isOpen: boolean
   onClose: () => void
-  log: any
+  log: { level?: string; action: string; admin: string; date?: string; details: LogEntry } | null
 }
 
 const levelIcons: Record<string, React.ReactNode> = {
@@ -45,9 +46,9 @@ export function LogDetailsModal({ isOpen, onClose, log }: LogDetailsModalProps) 
           <div className="fo-modal-section">
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Log Level</h3>
             <div
-              className={`fa-status w-fit ${levelColors[log.level] || levelColors.info}`}
+              className={`fa-status w-fit ${levelColors[log.level ?? "info"] || levelColors.info}`}
             >
-              {levelIcons[log.level] || levelIcons.info}
+              {levelIcons[log.level ?? "info"] || levelIcons.info}
               {String(log.level || "info").toUpperCase()}
             </div>
           </div>

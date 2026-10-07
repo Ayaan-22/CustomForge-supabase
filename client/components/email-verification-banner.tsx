@@ -37,7 +37,7 @@ export function EmailVerificationBanner() {
           text: "Verification email sent! Please check your inbox.",
         });
       }
-    } catch (error) {
+    } catch {
       setMessage({
         type: "error",
         text: "An error occurred. Please try again.",

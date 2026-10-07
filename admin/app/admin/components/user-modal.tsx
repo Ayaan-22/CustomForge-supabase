@@ -14,7 +14,7 @@ interface User {
   name: string
   email: string
   password?: string
-  role: "user" | "admin"
+  role: string
   avatar: string
   isEmailVerified: boolean
   twoFactorEnabled: boolean
@@ -27,7 +27,7 @@ interface UserModalProps {
   isOpen: boolean
   onClose: () => void
   onSubmit: (user: Partial<User>) => Promise<void>
-  initialData?: User
+  initialData?: Partial<User> | null
 }
 
 export function UserModal({ isOpen, onClose, onSubmit, initialData }: UserModalProps) {

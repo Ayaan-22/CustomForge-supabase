@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Edit2, Trash2, Copy, Check, TicketPercent, Eye, Search, CalendarDays } from "lucide-react";
 import { CouponModal } from "../components/coupon-modal";
+import type { Coupon as CouponInput } from "@/lib/coupon-transforms";
 import { apiClient } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { SectionHeader } from "@/components/patterns/section-header";
@@ -108,17 +109,17 @@ export default function CouponsPage() {
         await runMutation(() => apiClient.deleteCoupon(id));
         toast({ title: "Success", description: "Coupon deleted successfully" });
         fetchCoupons();
-      } catch (error: any) {
+      } catch (error: unknown) {
         toast({
           title: "Error",
-          description: error.message || "Failed to delete coupon",
+          description: ((error instanceof Error && error.message) || "Failed to delete coupon"),
           variant: "destructive",
         });
       }
     }
   };
 
-  const handleSubmitCoupon = async (couponData: any) => {
+  const handleSubmitCoupon = async (couponData: CouponInput) => {
     try {
       if (selectedCoupon && selectedCoupon.id) {
         await runMutation(() => apiClient.updateCoupon(selectedCoupon.id, couponData));
@@ -129,10 +130,10 @@ export default function CouponsPage() {
       }
       setIsModalOpen(false);
       fetchCoupons();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Failed to save coupon",
+        description: ((error instanceof Error && error.message) || "Failed to save coupon"),
         variant: "destructive",
       });
       throw error; // Re-throw to ensure error is properly handled

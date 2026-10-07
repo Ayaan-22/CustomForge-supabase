@@ -318,10 +318,13 @@ export async function apiFetch<T = unknown>(
           }
         : {}),
     };
-  } catch (e: any) {
+  } catch (e: unknown) {
     const error: ApiError = {
       message:
-        e?.name === "TimeoutError"
+        e !== null &&
+        (typeof e === "object" || typeof e === "function") &&
+        "name" in e &&
+        e.name === "TimeoutError"
           ? "The request timed out. Please retry."
           : "Unable to connect to the server. Please check your connection and retry.",
       status: 0,

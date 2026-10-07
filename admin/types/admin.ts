@@ -8,6 +8,18 @@ export type AdminProduct = {
   originalPrice: number; finalPrice: number; discountPercentage: number; stock: number;
   isActive: boolean; isFeatured: boolean; ratings: {average: number; totalReviews: number};
 };
+export type AdminProductPayload = Pick<AdminProduct,
+  'name' | 'sku' | 'category' | 'brand' | 'description' | 'originalPrice' |
+  'discountPercentage' | 'stock' | 'images' | 'specifications' | 'features' |
+  'warranty' | 'weight' | 'dimensions' | 'isActive' | 'isFeatured'
+> & { imageFiles?: File[] };
+export type AdminUserPayload = {
+  name?: string;
+  email?: string;
+  password?: string;
+  role?: AdminUserRow['role'];
+  active?: boolean;
+};
 export type AdminUserRow = {
   id: string; name: string; email: string; role: string; phone?: string; avatar?: string;
   active: boolean; is_email_verified: boolean; two_factor_enabled: boolean; created_at: string;

@@ -1,7 +1,7 @@
 "use client";
 import "../forge-operations.css";
 import {useUrlState} from "@/hooks/use-url-state";
-import type {AdminUserRow} from "@/types/admin";
+import type {AdminUserRow, AdminUserPayload} from "@/types/admin";
 import {useAdminMutation} from "@/hooks/use-admin-mutation";
 import { useConfirmation } from "@/hooks/use-confirmation";
 
@@ -70,8 +70,8 @@ export default function UsersPage() {
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [isAddressesOpen, setIsAddressesOpen] = useState(false);
   const [isPaymentMethodsOpen, setIsPaymentMethodsOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<any>(null);
-  const [editingUser, setEditingUser] = useState<any>(null);
+  const [selectedUser, setSelectedUser] = useState<AdminUserRow | null>(null);
+  const [editingUser, setEditingUser] = useState<AdminUserRow | null>(null);
 
   const search = useDebouncedValue(searchTerm);
   const filters = {page, limit, search: search, role: roleFilter === 'all' ? undefined : roleFilter, isActive: activeFilter === 'all' ? undefined : String(activeFilter === 'active'), sortBy, sortOrder};
@@ -86,7 +86,7 @@ export default function UsersPage() {
   const fetchUsers = () => { void listQuery.refetch(); void statsQuery.refetch(); };
 
 
-  const handleUserSubmit = async (userData: any) => {
+  const handleUserSubmit = async (userData: AdminUserPayload) => {
     try {
       if (editingUser) {
         await runMutation(() => apiClient.updateUser(editingUser.id, userData));
@@ -98,10 +98,10 @@ export default function UsersPage() {
       setIsUserModalOpen(false);
       setEditingUser(null);
       fetchUsers();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Failed to save user",
+        description: ((error instanceof Error && error.message) || "Failed to save user"),
         variant: "destructive",
       });
     }
@@ -113,32 +113,32 @@ export default function UsersPage() {
         await runMutation(() => apiClient.deleteUser(userId)); // Assuming ID is number for delete based on api-client
         toast({ title: "Success", description: "User deleted successfully" });
         fetchUsers();
-      } catch (error: any) {
+      } catch (error: unknown) {
         toast({
           title: "Error",
-          description: error.message || "Failed to delete user",
+          description: ((error instanceof Error && error.message) || "Failed to delete user"),
           variant: "destructive",
         });
       }
     }
   };
 
-  const handleViewUser = (user: any) => {
+  const handleViewUser = (user: AdminUserRow) => {
     setSelectedUser(user);
     setIsDetailsModalOpen(true);
   };
 
-  const handleEditUser = (user: any) => {
+  const handleEditUser = (user: AdminUserRow) => {
     setEditingUser(user);
     setIsUserModalOpen(true);
   };
 
-  const handleViewAddresses = (user: any) => {
+  const handleViewAddresses = (user: AdminUserRow) => {
     setSelectedUser(user);
     setIsAddressesOpen(true);
   };
 
-  const handleViewPaymentMethods = (user: any) => {
+  const handleViewPaymentMethods = (user: AdminUserRow) => {
     setSelectedUser(user);
     setIsPaymentMethodsOpen(true);
   };
