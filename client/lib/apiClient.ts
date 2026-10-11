@@ -1,5 +1,6 @@
 import type { User } from "./types";
 import { getAccessToken, useAuthStore } from "./auth-store";
+import { createSessionCoordinator, withSessionLock } from "./session-sync";
 
 export type ApiError = {
   message: string;
@@ -27,6 +28,7 @@ type RequestOptions = {
   skipAuth?: boolean; // Skip adding Authorization header
   skipRefresh?: boolean; // Skip automatic token refresh on 401
   skipCsrfRetry?: boolean; // Internal one-retry bound for a rejected CSRF check
+  skipSessionLock?: boolean; // Internal: already inside the cookie mutation lock
 };
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -71,83 +73,83 @@ async function parseJsonSafe(res: Response) {
     return text || null;
   }
 }
-
 // ============================================
 // TOKEN REFRESH
 // ============================================
 
 let refreshPromise: Promise<string | null> | null = null;
+const sessions = createSessionCoordinator<User>({
+  current: () => {
+    const { accessToken, user } = useAuthStore.getState();
+    return accessToken && user ? { token: accessToken, user } : null;
+  },
+  accept: ({ token, user }) => useAuthStore.getState().setAuth(token, user),
+  validUser: (user): user is User => !!user && typeof user === 'object' && 'id' in user && typeof user.id === 'string',
+  clear: () => useAuthStore.getState().clearAuth(),
+});
+export const endSession = (endedAtMs?: number) => sessions.endSession(endedAtMs);
 
 export function restoreSession(): Promise<string | null> {
   if (!refreshPromise) {
-    refreshPromise = (
-      typeof navigator !== "undefined" && navigator.locks
-        ? navigator.locks
-            .request("customforge-refresh", refreshAccessToken)
-            .then((token) => token)
-        : refreshAccessToken()
-    ).finally(() => {
+    const startingToken = useAuthStore.getState().accessToken;
+    refreshPromise = sessions.refresh(refreshAccessToken).then(session => session.token).catch(() => {
+      if (useAuthStore.getState().accessToken === startingToken) useAuthStore.getState().clearAuth();
+      return null;
+    }).finally(() => {
       refreshPromise = null;
     });
   }
   return refreshPromise!;
 }
 
-async function refreshAccessToken(): Promise<string | null> {
-  try {
-    const csrfToken = await getCsrfToken();
-    // Call refresh endpoint - browser automatically sends HttpOnly cookie
-    const res = await fetch(buildUrl("/auth/refresh"), {
-      method: "POST",
-      signal: AbortSignal.timeout(30_000),
-      cache: "no-store",
-      credentials: "include", // CRITICAL: Send HttpOnly cookie
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
-      },
-    });
+async function refreshAccessToken(): Promise<{ token: string; user: User }> {
+  const refreshBudget = AbortSignal.timeout(30_000);
+  const csrfToken = await getCsrfToken(refreshBudget);
+  // Call refresh endpoint - browser automatically sends HttpOnly cookie
+  const res = await fetch(buildUrl("/auth/refresh"), {
+    method: "POST",
+    signal: refreshBudget,
+    cache: "no-store",
+    credentials: "include", // CRITICAL: Send HttpOnly cookie
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+    },
+  });
 
-    if (!res.ok) {
-      // Refresh token expired or invalid - clear auth but DON'T redirect
-      // Let the calling code decide whether to redirect
-      useAuthStore.getState().clearAuth();
-      return null;
-    }
-
-    const data = await parseJsonSafe(res);
-    const newToken =
-      data?.data?.accessToken ||
-      data?.data?.token ||
-      data?.accessToken ||
-      data?.token;
-
-    if (newToken) {
-      // Update Zustand store with new access token
-      const currentUser = data?.data?.user ?? useAuthStore.getState().user;
-      if (currentUser) {
-        useAuthStore.getState().setAuth(newToken, currentUser);
-      }
-      return newToken;
-    }
-
-    return null;
-  } catch (error) {
-    console.error("Token refresh failed:", error);
-    useAuthStore.getState().clearAuth();
-    return null;
+  if (!res.ok) {
+    // Refresh token expired or invalid - clear auth but DON'T redirect
+    // Let the calling code decide whether to redirect
+    throw new Error('Please sign in again.');
   }
+
+  const data = await parseJsonSafe(res);
+  const newToken =
+    data?.data?.accessToken ||
+    data?.data?.token ||
+    data?.accessToken ||
+    data?.token;
+
+  if (newToken) {
+    // Update Zustand store with new access token
+    const currentUser = data?.data?.user ?? useAuthStore.getState().user;
+    if (currentUser) {
+      return { token: newToken, user: currentUser };
+    }
+  }
+
+  throw new Error('The refresh response did not contain a session.');
 }
 
 // Session cookies rotate after login, verification and refresh (including other tabs).
 // Always obtain a token for the current cookie binding; never cache it indefinitely.
-async function getCsrfToken(): Promise<string | null> {
+async function getCsrfToken(signal?: AbortSignal): Promise<string | null> {
   try {
     const res = await fetch(buildUrl("/auth/csrf-token"), {
       cache: "no-store",
       method: "GET",
-      signal: AbortSignal.timeout(30_000),
+      signal: signal || AbortSignal.timeout(30_000),
       credentials: "include",
       headers: {
         Accept: "application/json",
@@ -169,6 +171,20 @@ export async function apiFetch<T = unknown>(
   path: string,
   options: RequestOptions = {},
 ): Promise<ApiResponse<T>> {
+  const changesSession = options.method !== 'GET' && /\/auth\/(?:login|logout|verify-email\/[^/]+|reset-password\/[^/]+|update-password)$/.test(path);
+  const logout = path.endsWith('/auth/logout');
+  if (changesSession && !options.skipSessionLock) {
+    const response = await withSessionLock(async () => {
+      const result = await apiFetch<T>(path, { ...options, skipSessionLock: true, skipRefresh: true });
+      if (logout && !result.error) sessions.endSession((result.data as { endedAtMs?: number } | null)?.endedAtMs);
+      return result;
+    });
+    // Refresh outside the mutation lock, then reacquire it for one bounded retry.
+    if (response.status === 401 && !logout && !options.skipAuth && !options.skipRefresh && !response.error?.is2FARequired) {
+      if (await restoreSession()) return apiFetch<T>(path, { ...options, skipRefresh: true });
+    }
+    return response;
+  }
   const {
     method = "GET",
     body,
@@ -301,8 +317,10 @@ export async function apiFetch<T = unknown>(
       }
     }
 
-    if (responseData?.token && responseData?.user)
+    if (responseData?.token && responseData?.user) {
       useAuthStore.getState().setAuth(responseData.token, responseData.user);
+      sessions.announce({ token: responseData.token, user: responseData.user });
+    }
     return {
       data: responseData as T,
       error: null,
@@ -332,26 +350,4 @@ export async function apiFetch<T = unknown>(
     };
     return { data: null, error, status: 0 };
   }
-}
-
-// ============================================
-// HELPER: Store tokens from login/register
-// ============================================
-
-export function storeAuthTokens(data: {
-  token?: string;
-  accessToken?: string;
-  user?: User;
-}) {
-  const token = data.token || data.accessToken;
-
-  if (token && data.user) {
-    // Store access token and user in Zustand (in-memory)
-    useAuthStore.getState().setAuth(token, data.user);
-  } else {
-    console.warn("storeAuthTokens: Missing token or user data");
-  }
-
-  // Refresh token is automatically stored in HttpOnly cookie by backend
-  // No need to handle it here
 }

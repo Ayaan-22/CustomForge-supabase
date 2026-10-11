@@ -7,15 +7,15 @@ These are maintained automated regression tests. The owner's cleanup policy pres
 | `admin/` | Admin response contracts and analytics completeness. |
 | `cart/` | Cart totals and wishlist behavior. |
 | `catalog/` | Prices and specification facets. |
-| `email/` | Email templates and transport. |
+| `email/` | Email templates, transport, durable outbox delivery, lease loss and cancellation. |
 | `logs/` | Log reader and controller behavior. |
 | `orders/` | Creation, history and allowed transitions. |
-| `payments/` | Disabled flows, metadata, webhooks and Stripe sessions. |
+| `payments/` | Disabled flows, metadata, webhooks, fixed payment deadlines, legacy provider discovery and expired-reservation recovery. |
 | `reviews/` | Customer review behavior. |
 | `users/` | Address validation. |
 | `security/` | Authentication/database identity, checkout, privilege boundaries, public catalog and route exposure. |
 | `helpers/` | Shared isolated test environment and loopback HTTP setup. |
-| `integration/rls/` | SQL assertions for storefront privacy, checkout, analytics and cancellation. |
+| `integration/rls/` | SQL assertions for storefront privacy, checkout, analytics, cancellation, payment recovery/deadline fencing and email outbox. |
 
 From the repository root:
 

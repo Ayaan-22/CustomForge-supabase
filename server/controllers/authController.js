@@ -1,5 +1,4 @@
 // server/controllers/authController.js
-import rateLimit from "express-rate-limit";
 import asyncHandler from "express-async-handler";
 import crypto from "crypto";
 
@@ -20,6 +19,8 @@ import {
   findUserByEmail,
   findUserById,
   updateUser,
+  rotateRefreshSession,
+  revokeRefreshSession,
   comparePassword,
 } from "../models/User.js";
 
@@ -28,30 +29,19 @@ import AppError from "../utils/appError.js";
 import { logger } from "../middleware/logger.js";
 import { buildCsrfToken } from "../utils/csrf.js";
 import { getAuthClient } from "../config/db.js";
-import { skipRateLimit } from "../config/rateLimit.js";
+import { loginLimiter } from "../config/rateLimit.js";
 import { publicUser } from "../utils/publicUser.js";
 import { authActionUrl } from "../utils/authActionUrl.js";
 
 /* ===========================================================
    RATE LIMITING
 =========================================================== */
-export const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: skipRateLimit,
-  message: "Too many login attempts, please try again later",
-});
+export { loginLimiter };
 
 /* ===========================================================
    COOKIE OPTIONS
 =========================================================== */
 const refreshCookieOptions = {
-  expires: new Date(
-    Date.now() +
-      Number(process.env.JWT_REFRESH_COOKIE_EXPIRES_IN || 30) * 24 * 60 * 60 * 1000
-  ),
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
   sameSite: "strict",
@@ -69,16 +59,21 @@ const validatePasswordConfirm = (password, passwordConfirm) => {
   }
 };
 
-const createSendToken = async (user, statusCode, res, client) => {
-  const { accessToken, refreshToken } = generateTokenPair(user.id, user.role);
+const createSendToken = async (user, statusCode, res, client, expectedHash) => {
+  const { accessToken, refreshToken, refreshExpiresAt } = generateTokenPair(user.id, user.role);
   const refreshTokenHash = hashToken(refreshToken);
-  const refreshTokenExpires = new Date(refreshCookieOptions.expires).toISOString();
-  await updateUser(user.id, {
-    refreshTokenHash,
-    refreshTokenExpires,
-  }, client);
+  const cookieDays = Number(process.env.JWT_REFRESH_COOKIE_EXPIRES_IN || 30);
+  if (!Number.isFinite(cookieDays) || cookieDays <= 0) throw new Error("Invalid refresh cookie lifetime");
+  const expires = new Date(Math.min(refreshExpiresAt.getTime(), Date.now() + cookieDays * 24 * 60 * 60 * 1000));
+  const refreshTokenExpires = expires.toISOString();
+  if (expectedHash !== undefined) {
+    const rotated = await rotateRefreshSession(user.id, expectedHash, refreshTokenHash, refreshTokenExpires, client, user.passwordChangedAt);
+    if (!rotated) throw new AppError("Refresh session changed. Please sign in again.", 401, null, true, "REFRESH_SESSION_CHANGED");
+  } else {
+    await updateUser(user.id, { refreshTokenHash, refreshTokenExpires }, client);
+  }
 
-  res.cookie("refresh_token", refreshToken, refreshCookieOptions);
+  res.cookie("refresh_token", refreshToken, { ...refreshCookieOptions, expires });
   res.cookie("csrf_token", buildCsrfToken(`refresh:${refreshToken}`), {
     httpOnly: false,
     secure: process.env.NODE_ENV === "production",
@@ -159,7 +154,7 @@ export const signup = asyncHandler(async (req, res, next) => {
 /* ===========================================================
    VERIFY EMAIL
    @desc   VERIFY USER EMAIL
-   @route  GET /api/auth/verify-email/:token
+   @route  POST /api/auth/verify-email/:token
    @access Public
 =========================================================== */
 export const verifyEmail = asyncHandler(async (req, res, next) => {
@@ -236,45 +231,46 @@ export const login = asyncHandler(async (req, res, next) => {
 /* ===========================================================
    LOGOUT
    @desc   LOGOUT USER
-   @route  GET /api/auth/logout
-   @access Private
+   @route  POST /api/auth/logout
+   @access Public (refresh cookie authenticates revocation)
 =========================================================== */
-export const logout = (req, res) => {
+export const logout = asyncHandler(async (req, res, next) => {
   const refreshToken = req.cookies?.refresh_token;
-  if (req.user?.id) {
-    updateUser(req.user.id, {
-      refreshTokenHash: null,
-      refreshTokenExpires: null,
-    }, getAuthClient()).catch(() => {});
-  } else if (refreshToken) {
+  let decoded;
+  if (refreshToken) {
     try {
-      const decoded = verifyJWT(refreshToken);
-      updateUser(decoded.userId, {
-        refreshTokenHash: null,
-        refreshTokenExpires: null,
-      }, getAuthClient()).catch(() => {});
-    } catch {}
+      decoded = verifyJWT(refreshToken, "refresh");
+    } catch {
+      // An invalid/expired cookie has no live session to revoke.
+    }
+  }
+  if (decoded) {
+    try {
+      const revoked = await revokeRefreshSession(decoded.userId, hashToken(refreshToken), getAuthClient());
+      if (!revoked) {
+        // Do not clear a cookie belonging to a login/refresh that won the race.
+        // The caller must settle concurrent session work before retrying logout.
+        return next(new AppError("Your session changed while signing out. Please try again.", 409, null, true, "LOGOUT_SESSION_CHANGED"));
+      }
+    } catch (error) {
+      logger.error("Logout: refresh-token invalidation failed", { userId: decoded.userId, error: error.message });
+      return next(new AppError("Unable to revoke your session. Please try signing out again.", 503, null, true, "LOGOUT_REVOKE_FAILED"));
+    }
   }
 
-  res.cookie("refresh_token", "loggedout", {
-    expires: new Date(Date.now() + 10 * 1000),
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-  });
-  res.cookie("csrf_token", "loggedout", {
-    expires: new Date(Date.now() + 10 * 1000),
+  res.clearCookie("refresh_token", refreshCookieOptions);
+  res.clearCookie("csrf_token", {
     httpOnly: false,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
   });
 
-  res.status(200).json({ status: "success" });
+  // Peers compare this server timestamp with access-token issuance time so a
+  // delayed logout notification cannot clear a later login.
+  res.status(200).json({ status: "success", endedAtMs: Date.now() });
 
-  try {
-    logger.info("Logout", { userId: req.user?.id });
-  } catch {}
-};
+  logger.info("Logout", { userId: decoded?.userId });
+});
 
 /* ===========================================================
    FORGOT PASSWORD
@@ -544,7 +540,7 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
 
   let decoded;
   try {
-    decoded = verifyJWT(presentedRefreshToken);
+    decoded = verifyJWT(presentedRefreshToken, "refresh");
   } catch (err) {
     return next(new AppError("Invalid or expired refresh token", 401));
   }
@@ -552,6 +548,10 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
   const user = await findUserById(decoded.userId, { includePassword: false }, supabase);
   if (!user || !user.active) {
     return next(new AppError("User not found or inactive", 401));
+  }
+
+  if (user.passwordChangedAt && decoded.issuedAtMs < new Date(user.passwordChangedAt).getTime()) {
+    return next(new AppError("Password recently changed. Login again.", 401));
   }
 
   if (!user.refreshTokenHash || !user.refreshTokenExpires) {
@@ -567,7 +567,7 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
     return next(new AppError("Refresh token expired", 401));
   }
 
-  await createSendToken(user, 200, res, supabase);
+  await createSendToken(user, 200, res, supabase, presentedHash);
   logger.info("Token rotated", { userId: user.id });
 });
 

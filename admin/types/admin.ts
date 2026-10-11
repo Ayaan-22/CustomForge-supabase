@@ -28,6 +28,7 @@ export type AdminOrder = {
   id: string; user_id: string; status: string; is_paid: boolean; total_price: number;
   items_price: number; tax_price: number; shipping_price: number; discount_amount: number;
   payment_method: string; created_at: string; return_status: string;
+  payment_result?: { reconciliationRequired?: boolean; [key: string]: unknown };
   shipping_address: {fullName?: string; address?: string; city?: string; state?: string; postalCode?: string; country?: string; phoneNumber?: string};
   items: Array<{id: string; product_id: string; name: string; price: number; quantity: number}>;
 };

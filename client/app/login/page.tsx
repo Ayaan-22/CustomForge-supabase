@@ -15,7 +15,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AuthService } from "@/services/auth-service";
 import { useToast } from "@/hooks/use-toast";
-import { storeAuthTokens } from "@/lib/apiClient";
 import { safeRedirect } from "@/lib/safe-redirect";
 import {
   captureLoginCredentials,
@@ -119,10 +118,6 @@ export default function LoginPage() {
           );
           return;
         }
-        storeAuthTokens({
-          token: response.data.token,
-          user: response.data.user,
-        });
         setSignedIn(true);
         setChallenge(null);
         setTwoFactorToken("");

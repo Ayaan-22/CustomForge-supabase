@@ -21,7 +21,7 @@ import {
   Search,
 } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
-import { canApproveReturn, canRecordCashPayment, nextFulfillmentStatus } from "@/lib/commerce-policy";
+import { canApproveReturn, canRecordCashPayment, nextFulfillmentStatus, needsPaymentReview } from "@/lib/commerce-policy";
 import { useToast } from "@/hooks/use-toast";
 import { SectionHeader } from "@/components/patterns/section-header";
 import { PageShell } from "@/components/patterns/page-shell";
@@ -33,11 +33,13 @@ import "../forge-commerce.css";
 const statusColors: Record<string, string> = {
   pending: "is-warning", paid: "is-success", processing: "is-neutral", shipped: "is-success",
   delivered: "is-success", cancelled: "is-danger", refunded: "is-neutral", returned: "is-warning",
+  payment_review: 'is-warning',
 };
 
 const statusIcons: Record<string, React.ReactNode> = {
   pending: <Package className="w-4 h-4" />,
   paid: <CreditCard className="w-4 h-4" />,
+  payment_review: <CreditCard className="w-4 h-4" />,
   processing: <Package className="w-4 h-4" />,
   shipped: <Truck className="w-4 h-4" />,
   delivered: <Truck className="w-4 h-4" />,
@@ -47,6 +49,7 @@ const statusIcons: Record<string, React.ReactNode> = {
 };
 
 const isCompleteId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+const statusLabel = (status: string) => status === 'payment_review' ? 'Payment needs review' : status.charAt(0).toUpperCase() + status.slice(1);
 
 export default function OrdersPage() {
   const { toast } = useToast();
@@ -139,6 +142,7 @@ export default function OrdersPage() {
     "all",
     "pending",
     "paid",
+    "payment_review",
     "processing",
     "shipped",
     "delivered",
@@ -184,7 +188,7 @@ export default function OrdersPage() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>{statuses.map((status) =>
-            <SelectItem key={status} value={status}>{status === "all" ? "All statuses" : status.charAt(0).toUpperCase() + status.slice(1)}</SelectItem>)}</SelectContent>
+            <SelectItem key={status} value={status}>{status === "all" ? "All statuses" : statusLabel(status)}</SelectItem>)}</SelectContent>
         </Select></div>
       </ActionBar>
       <section className="fa-panel fc-orders-panel" aria-label="Order management">
@@ -221,9 +225,9 @@ export default function OrdersPage() {
                   </div>
                   <div className="fc-order-value">
                     <strong>${Number(order.total_price).toFixed(2)}</strong>
-                    <small>{order.items?.length || 0} line items · {order.is_paid ? "Paid" : "Awaiting payment"}</small>
+                    <small>{order.items?.length || 0} line items · {needsPaymentReview(order) ? 'Payment captured · needs review' : order.is_paid ? "Paid" : "Awaiting payment"}</small>
                   </div>
-                  <span className={`fa-status ${statusColors[order.status] || "is-neutral"}`}>{statusIcons[order.status] || statusIcons.pending}{order.status.charAt(0).toUpperCase() + order.status.slice(1)}</span>
+                  <span className={`fa-status ${statusColors[order.status] || "is-neutral"}`}>{statusIcons[order.status] || statusIcons.pending}{needsPaymentReview(order) ? 'Payment needs review' : statusLabel(order.status)}</span>
                   <time dateTime={order.created_at}>{new Date(order.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</time>
                   <ChevronDown size={18} className="fc-order-chevron" aria-hidden="true" />
                 </button>
@@ -245,8 +249,9 @@ export default function OrdersPage() {
                     <section>
                       <h3>
                         <CreditCard size={16} />Payment</h3>
-                      <span className={`fa-status ${order.is_paid ? "is-success" : "is-warning"}`}>{order.is_paid ? "Paid" : "Awaiting payment"}</span>{order.payment_method && <p className="fc-payment-method">{order.payment_method === "cod" ? "Cash on delivery" : order.payment_method}</p>}
+                      <span className={`fa-status ${order.is_paid && !needsPaymentReview(order) ? "is-success" : "is-warning"}`}>{needsPaymentReview(order) ? 'Payment captured · needs review' : order.is_paid ? "Paid" : "Awaiting payment"}</span>{order.payment_method && <p className="fc-payment-method">{order.payment_method === "cod" ? "Cash on delivery" : order.payment_method}</p>}
                       {!order.is_paid && ["pending", "paid", "processing", "shipped"].includes(order.status) && <p className="fc-muted">{order.payment_method === "cod" ? "Record cash payment once collected. Payment must be received before marking delivery." : "Payment confirmation is required before fulfillment can continue."}</p>}
+                      {needsPaymentReview(order) && <p className="fc-muted" role="status">Payment was captured after the inventory reservation ended. Fulfillment is paused. Reconcile the payment with Stripe and contact the customer; any refund must be completed and confirmed through the payment provider.</p>}
                       {order.return_status && order.return_status !== "none" && <p className="fc-muted">Return status: {order.return_status}</p>}</section>
                     <section>
                       <h3>Order summary</h3>

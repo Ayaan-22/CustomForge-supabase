@@ -1,5 +1,6 @@
 import { PackageCheck, Box, Truck, CheckCircle2, Trophy } from "lucide-react";
 import type { Order } from "@/lib/types";
+import { orderNeedsPaymentReview } from '@/lib/order-detail';
 
 export function OrderCelebration({ order }: { order: Order }) {
   const complete = order.isPaid || order.paymentMethod === "cod";
@@ -23,7 +24,8 @@ export function OrderCelebration({ order }: { order: Order }) {
   );
 }
 export function OrderTimeline({ order }: { order: Order }) {
-  const stopped = ["cancelled", "returned", "refunded"].includes(order.status);
+  const review = orderNeedsPaymentReview(order);
+  const stopped = review || ["cancelled", "returned", "refunded"].includes(order.status);
   const shipped = ["shipped", "delivered"].includes(order.status);
   const steps = [
     {
@@ -63,7 +65,7 @@ export function OrderTimeline({ order }: { order: Order }) {
       <p className="forge-eyebrow">YOUR UPGRADE JOURNEY</p>
       {stopped ? (
         <p className="mt-3 text-sm">
-          This order is {order.status}. Fulfillment progression has stopped.
+          {review ? 'Payment needs review. Fulfillment is paused while the store reviews this payment.' : `This order is ${order.status}. Fulfillment progression has stopped.`}
         </p>
       ) : (
         <div>

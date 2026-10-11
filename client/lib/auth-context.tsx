@@ -21,12 +21,10 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     return () => {active = false;};
   }, []);
   useEffect(() => {
-    const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('customforge-session') : null;
-    if (channel) channel.onmessage = event => {if (event.data === 'logout') {clearAuth(); queryClient.clear();}};
     const unsubscribe = useAuthStore.subscribe((state, previous) => {
-      if (previous.user && !state.user) {queryClient.clear(); channel?.postMessage('logout');}
+      if (previous.user && !state.user) queryClient.clear();
     });
-    return () => {unsubscribe(); channel?.close();};
+    return unsubscribe;
   }, [clearAuth, queryClient]);
   useEffect(() => {
     if (previousUser.current && previousUser.current !== user?.id) queryClient.clear();
@@ -40,13 +38,11 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     staleTime: 300_000,
   });
   useEffect(() => {
-    if (me.data?.data) useAuthStore.getState().updateUser(me.data.data);
-    else if (me.data && me.data.data === null) clearAuth();
+    if (me.data?.data && me.data.data.id === useAuthStore.getState().user?.id) useAuthStore.getState().updateUser(me.data.data);
   }, [me.data, clearAuth]);
   const logout = async () => {
     const result = await AuthService.logout();
     if (result.error) {toast.error('Sign out failed. Please retry to end your server session.'); return;}
-    clearAuth();
     queryClient.clear();
     window.location.assign('/login');
   };

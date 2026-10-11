@@ -12,6 +12,7 @@ export function mapOrderToFrontend(order) {
     status: order.status,
     isPaid: Boolean(order.is_paid),
     paymentMethod: order.payment_method,
+    paymentExpiresAt: order.payment_expires_at ?? undefined,
     returnStatus: order.return_status,
     subtotal: order.items_price,
     discount: order.discount_amount,

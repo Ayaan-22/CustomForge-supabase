@@ -43,17 +43,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { pathname, router } = initialNavigation.current;
     const checkAuth = async () => {
       try {
-        const response = await authClient.refreshToken();
-        if (response.data?.user) {
-          if (response.data.user.role !== "admin") {
-            throw new Error("Access denied: Admin role required");
-          }
-          useAuthStore.getState().setUser(response.data.user);
-          useAuthStore.getState().setToken(response.token);
-        }
+        await authClient.refreshToken();
       } catch {
-        useAuthStore.getState().clearAuth();
-        if (pathname?.startsWith("/admin")) {
+        if (pathname?.startsWith("/admin") && !useAuthStore.getState().accessToken) {
           router.push("/login");
         }
       } finally {
@@ -134,13 +126,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!loading && pathname.startsWith('/admin') && (!accessToken || user?.role !== 'admin')) router.replace('/login');
   }, [loading, pathname, accessToken, user?.role, router]);
   useEffect(() => {
-    const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('customforge-session') : null;
-    if (channel) channel.onmessage = event => { if (event.data === 'logout') {useAuthStore.getState().clearAuth(); qc.clear();} };
     const off = useAuthStore.subscribe((state, previous) => {
       if (previous.user?.id !== state.user?.id) qc.clear();
-      if (previous.user && !state.user) channel?.postMessage('logout');
     });
-    return () => {off(); channel?.close();};
+    return off;
   }, [qc]);
   if (!loading && pathname.startsWith('/admin') && (!accessToken || user?.role !== 'admin')) return null;
 

@@ -42,7 +42,7 @@ CustomForge supports multiple payment methods with distinct workflows:
 | Method | Workflow |
 | :--- | :--- |
 | **Stripe** | Redirect to Hosted Checkout → Webhook Confirmation → Order Paid |
-| **PayPal** | Client-side Capture → Backend Verification → Order Paid |
+| **PayPal** | Unavailable (503); no capture or settlement is implemented |
 | **COD** | Order Confirmed → Manual Fulfillment → Marked Paid on Delivery |
 
 ### Order Status Mapping
@@ -51,7 +51,12 @@ CustomForge supports multiple payment methods with distinct workflows:
 - `paid`: Payment confirmed by gateway.
 - `shipped`: Dispatched via logistics.
 - `delivered`: Reached the customer.
-- `cancelled`: Terminated by user or system (stock is automatically replenished).
+- `cancelled`: Eligible unpaid COD cancellation or terminal unpaid Stripe recovery restores stock atomically. Arbitrary status edits are not proof of inventory restoration.
+- `payment_review`: Payment was captured after inventory was released or requires reconciliation. Fulfillment and return actions are blocked until the merchant resolves the provider/order state.
+
+New Stripe orders expose paymentExpiresAt, fixed at two hours after order creation. The storefront shows the remaining time and disables payment after expiry. Checkout retries keep the deadline and provider parameters unchanged. New Checkout must start with 31 minutes remaining; existing sessions can resume until expiry. The recovery worker scans at startup and every minute, expires abandoned open sessions, verifies unpaid state, then cancels the order and restores inventory, sales counts and coupon usage once. Unbound creation responses keep a five-minute reconciliation grace. Legacy missing customer identities use bounded account-wide provider discovery. Processing payments, provider outages and incomplete/ambiguous observations stay reserved. Late settlement shares the database order lock with release and is recorded as payment_review, preventing fulfillment after inventory release. COD has no Stripe payment deadline.
+
+Order creation queues a confirmation email in its database transaction. A background outbox worker uses renewable leases and durable retry backoff. Checkout rollback creates no job; idempotent replay creates no duplicate job. SMTP delivery is at least once, so a crash between acceptance and acknowledgement can produce a duplicate email.
 
 ---
 
@@ -71,5 +76,5 @@ Our coupon system supports complex targeting:
 
 1. **Request**: User requests a return via `POST /orders/request-return/:id`.
 2. **Approval**: Admin reviews and approves/denies.
-3. **Refund**: Once approved, the payment gateway processes the refund, and the order status is updated to `returned`.
-4. **Inventory**: System optionally restocks the returned items based on condition.
+3. **Refund**: Provider refund initiation and complete ledger reconciliation remain unavailable. Signed Stripe refund webhooks record provider-observed outcomes.
+4. **Inventory**: Completed returns/restocking reconciliation is outstanding; return approval alone does not refund money or restock items.

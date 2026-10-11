@@ -1,6 +1,6 @@
 # CustomForge — quick project context
 
-Source-checked **October 6, 2026 (Asia/Karachi)**. Read [AI_CONTEXT.md](AI_CONTEXT.md) for the detailed contracts, source links and limitations. This is a maintained implementation reference for a personal, public GitHub project; it is not deployment certification or a dated QA report.
+Source-checked **October 9, 2026 (Asia/Karachi)**. Read [AI_CONTEXT.md](AI_CONTEXT.md) for the detailed contracts, source links and limitations. This is a maintained implementation reference for a personal, public GitHub project; it is not deployment certification or a dated QA report.
 
 ## Packages and architecture
 
@@ -28,13 +28,13 @@ Storefront: catalog/search/spec facets/sorting, deals, product gallery/quick vie
 
 ## Authentication and database boundaries
 
-- Auth uses **public.users + bcrypt + Express JWT + Speakeasy**, not Supabase Auth login.
-- Registration creates an unverified normal user and sends mail, without issuing a session. Login requires active/verified credentials and TOTP when enabled. Verification/reset consume expiring hashed links.
+- Auth uses **public.users + bcrypt + Express JWT + OTPAuth**, not Supabase Auth login.
+- Registration creates an unverified normal user and sends mail, without issuing a session. Login requires active/verified credentials and TOTP when enabled. Verification/reset consume expiring hashed links; email confirmation requires an explicit POST from the link landing page.
 - Access token is returned in JSON and held in memory, then sent as Bearer. **No jwt access cookie or browser-persisted session token.** refresh_token is HttpOnly, Strict and Secure in production; csrf_token is readable; anon_session binds anonymous bootstrap.
-- Access-pair default: 15 minutes via JWT_SHORT_EXPIRES_IN. Refresh default: 30 days, with its own JWT/cookie settings. Database refresh hash/expiry is one binding per user; refresh rotates the pair.
-- Unsafe requests need fresh **X-CSRF-Token** even for public login/register/logout. CSRF HMAC binds to refresh token or anonymous session; use same-origin proxying. Transports coordinate refresh and bounded CSRF retry.
+- Access-pair default: 15 minutes via JWT_SHORT_EXPIRES_IN. Refresh default: 30 days, with its own JWT/cookie settings. Tokens have distinct purposes/audiences and refresh jti; legacy tokens require a new sign-in. Database refresh hash/expiry is one binding per user; rotation atomically matches the binding, active account, expiry and password-change timestamp. Logout returns 409 on a changed binding or 503 on database failure, preserving cookies for retry.
+- Unsafe requests need fresh **X-CSRF-Token** even for public login/register/logout. CSRF HMAC binds to refresh token or anonymous session; production requires a distinct CSRF_SECRET. Transports coordinate cookie changes and refresh through same-origin memory-only broadcasts/Web Locks with bounded CSRF retry. Locks/broadcasts are origin scoped; cookies can be shared across ports on the same hostname.
 - protect/optionalAuth verifies identity before binding a UUID. [server/config/db.js](server/config/db.js) creates short database-only authenticated JWTs signed by **SUPABASE_JWT_SECRET**, separate from **JWT_SECRET**, enforcing owner RLS even for customer operations by admins.
-- getAuthClient is users-only auth capability; getServiceClient belongs at privileged admin/provider boundaries. Its misuse proxy operates outside production; production still requires correct source/route boundaries. Models require explicit clients. Never fall back to service role for customer reads/writes.
+- getAuthClient is users-only auth capability; getServiceClient belongs at privileged admin/provider boundaries and background workers. Its misuse guard operates in every environment, including captured method calls. Models require explicit clients. Never fall back to service role for customer reads/writes.
 - Admin routes require admin role, verified email and conditional TOTP. TOTP enrollment is not mandatory for every admin; /auth/2fa/verify confirms authenticated enrollment, not a separate login step.
 
 ## Canonical API and schema
@@ -43,7 +43,7 @@ All examples below have prefix **/api/v1**. Exact methods, access and aliases: [
 
 | Flow | Canonical examples |
 | --- | --- |
-| Bootstrap/auth | GET /auth/csrf-token; POST /auth/register, /login, /logout, /refresh, /forgot-password, /reset-password/:token; GET /auth/verify-email/:token. Registration is not /signup; logout is not GET. |
+| Bootstrap/auth | GET /auth/csrf-token; POST /auth/register, /login, /logout, /refresh, /forgot-password, /reset-password/:token, /verify-email/:token. Verification GET returns 405 without consuming the link. Registration is not /signup; logout is not GET. |
 | Verification | POST /auth/resend-verification uses signed-out email/password proof; /auth/send-verification-email requires Bearer auth. |
 | Profile | GET /users/me uses optionalAuth and returns anonymous data null; protected /users/profile is different. |
 | Discovery | GET /products, /products/:id, /products/facets and catalog/category/brand/search/related/review reads. |
@@ -52,9 +52,9 @@ All examples below have prefix **/api/v1**. Exact methods, access and aliases: [
 | Payment | POST /payment/create-stripe-session; signed POST /payment/webhook; GET /payment/payment-methods for owned existing Stripe card metadata. |
 | Reviews/wishlist | /users/wishlist; create POST /products/:id/reviews; owner GET /reviews/products/:id/mine and inventoried review mutations. |
 
-Canonical migrations live in [server/models/migrations/](server/models/migrations/). Fresh setup order: **schema.sql → 20260430_security_hardening.sql → 20261002_public_storefront_rls.sql → 20261003_atomic_checkout.sql → 20261004_admin_analytics.sql → 20261004_cancel_unpaid_order.sql**. Inspect an existing database's applied state before upgrading. add_stripe_customer_id.sql is a compatibility helper; admin/scripts/schema.sql is not setup authority.
+Canonical migrations live in [server/models/migrations/](server/models/migrations/). Fresh setup order: **schema.sql → 20260430_security_hardening.sql → 20261002_public_storefront_rls.sql → 20261003_atomic_checkout.sql → 20261004_admin_analytics.sql → 20261004_cancel_unpaid_order.sql → 20261008_stripe_reservation_recovery.sql → 20261008_order_email_outbox.sql → 20261009_stripe_payment_deadline.sql**. Inspect an existing database's applied state before upgrading. Startup requires the queue tables and payment-deadline column. add_stripe_customer_id.sql is a compatibility helper; admin/scripts/schema.sql is not setup authority.
 
-Tables: users, user_addresses, user_payment_methods, products, games, prebuilt_pcs, user_wishlist, reviews, coupons, carts, cart_items, orders, order_items. Six storefront views expose published catalog/appropriate reviews without private profiles. Brands/categories derive from products. Database snake_case and DTO camelCase use explicit mappers.
+Tables: users, user_addresses, user_payment_methods, products, games, prebuilt_pcs, user_wishlist, reviews, coupons, carts, cart_items, orders, order_items, stripe_checkout_attempts, order_email_outbox. Six storefront views expose published catalog/appropriate reviews without private profiles. Brands/categories derive from products. Database snake_case and DTO camelCase use explicit mappers.
 
 ## Commerce rules and limitations
 
@@ -62,18 +62,18 @@ Tables: users, user_addresses, user_payment_methods, products, games, prebuilt_p
 - New order is pending/unpaid (201); replay returns its owned prior order (200) without repeated stock changes. Checkout idempotency is separate from provider settlement proof.
 - USD defaults: discounted subtotal; shipping 0 at subtotal >=100 else 10; tax rounded to 10% of discounted subtotal; total adds shipping/tax. These defaults are not jurisdiction-specific tax policy.
 - **cancel_unpaid_order** supports repeat-safe owner cancellation/restocking only for pending unpaid COD. Coupon usage remains consumed; Stripe cancellation needs provider reconciliation.
-- Hosted Stripe Checkout and COD collection are implemented. Signed settlement validates amount/currency/owner/customer/intent; version-checked persistence failures remain retriable. Navigation to a success screen does not prove payment.
+- Hosted Stripe Checkout and COD collection are implemented. New Stripe orders have a fixed two-hour deadline from creation, a storefront countdown and one durable provider attempt/session. New Checkout must start with 31 minutes remaining; existing sessions can resume until expiry. The minute worker cancels confirmed unpaid reservations and restores stock/sales/coupon usage atomically; ambiguous creation gets a five-minute grace. Legacy missing identities use bounded provider discovery; outages, incomplete scans and processing payments stay reserved for reconciliation. Signed settlement validates amount/currency/owner/customer/intent. Late capture after release becomes paid + payment_review, blocking fulfillment/returns. Navigation to a success screen does not prove payment.
 - PayPal, direct payment/process/intent compatibility flows, verified saved-card enrollment, admin refund execution and completed return reconciliation are unavailable (503 handlers where mounted).
 - Existing Stripe card **read metadata is enabled**. Separate /users/payment-methods legacy CRUD stores validated last-four/display metadata and rejects CVV/non-last-four input; it does not enroll or authorize a provider card. A page/route existing does not imply a disabled operation works.
 - Public reviews are approved/active; owner edits cannot certify moderation/purchase fields. Facets have a 1,000-candidate bound; incomplete candidates must not be presented as complete counts.
 - Analytics uses PostgreSQL admin_analytics, with explicit period scope and missing-RPC 503. Paid gross revenue is not net partial-refund accounting. Inventory is current state. Logs use server-local filename dates and empty-day handling.
-- Emails use Nodemailer/Pug; development without credentials can log dummy sends. Order mail scheduling is not a durable queue. Invoices use saved order totals, not tax/provider certification.
+- Emails use Nodemailer/Pug; development without credentials can log dummy sends. New-order confirmations use a transactional outbox with renewable leases, durable retries and bounded delivery attempts. SMTP is at least once; a crash after provider acceptance can duplicate delivery. Invoices use saved order totals, not tax/provider certification.
 
 ## Configuration and commands
 
 No committed environment example files currently exist; [README.md](README.md) contains placeholder setup templates. Keep actual credentials/project IDs/personal paths out of public docs.
 
-Server settings: NODE_ENV, PORT, CLIENT_URL, ADMIN_URL; **SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_JWT_SECRET**; JWT_SECRET, JWT_ALGORITHM, JWT_SHORT_EXPIRES_IN, JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN, JWT_REFRESH_COOKIE_EXPIRES_IN; CSRF_SECRET; STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET; EMAIL_HOST, EMAIL_PORT, EMAIL_USERNAME, EMAIL_PASSWORD, EMAIL_FROM; CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET; supported `RATE_`/`LOG_` settings. See detailed context/source for exact options. Next uses server-only API_BACKEND_URL. Import-time initialization needs required configuration even for COD development; never disable TLS verification.
+Server settings: NODE_ENV, PORT, CLIENT_URL, ADMIN_URL, TRUST_PROXY, optional REDIS_URL; **SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_JWT_SECRET**; JWT_SECRET, JWT_ALGORITHM, JWT_SHORT_EXPIRES_IN, JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN, JWT_REFRESH_COOKIE_EXPIRES_IN; CSRF_SECRET; STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET; EMAIL_HOST, EMAIL_PORT, EMAIL_USERNAME, EMAIL_PASSWORD, EMAIL_FROM; CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET; supported `RATE_`/`LOG_` settings. Redis is required across API replicas; configured failures fail closed. See detailed context/source for exact options. Next uses server-only API_BACKEND_URL. Import-time initialization needs required configuration even for COD development; disabled TLS verification is rejected in every environment.
 
 From root, run each app in its own terminal:
 

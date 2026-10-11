@@ -41,6 +41,20 @@ function render(record: Order) {
   return html;
 }
 describe("saved-order payment UI", () => {
+  it('shows the payment deadline and stops offering payment once it ends', () => {
+    const future=render({...order,paymentExpiresAt:new Date(Date.now()+90*60_000).toISOString()});
+    expect(future).toContain('Pay within two hours');
+    const expired=render({...order,paymentExpiresAt:new Date(Date.now()-1).toISOString()});
+    expect(expired).toContain('Payment window ended.');
+    expect(expired).not.toContain('Pay $174.90 with Stripe');
+  });
+  it('explains a captured payment needing review without asking the customer to pay again', () => {
+    const html=render({...order,status:'payment_review',isPaid:true});
+    expect(html).toContain('Payment needs review.');
+    expect(html).toContain('Do not pay again; contact store support with your order number.');
+    expect(html).not.toContain('Pay $174.90 with Stripe');
+    expect(html).not.toContain('Payment confirmed.');
+  });
   it("offers the exact saved total and directs card entry to Stripe", () => {
     const html = render(order);
     expect(html).toContain("Pay $174.90 with Stripe");

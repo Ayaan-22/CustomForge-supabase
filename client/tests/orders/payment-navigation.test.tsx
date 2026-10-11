@@ -77,6 +77,7 @@ describe.each([
   });
   it.each([
     "paid",
+    "payment_review",
     "cancelled",
     "refunded",
     "returned",
@@ -91,6 +92,13 @@ describe.each([
     expect(render(Page, { ...order, isPaid: true })).not.toContain(
       "Continue to payment",
     );
+  });
+  it('labels captured payment review and leaves payment/cancellation/return unavailable', () => {
+    const html=render(Page,{...order,status:'payment_review',isPaid:true});
+    expect(html).toContain('Payment needs review');
+    expect(html).not.toContain('Continue to payment');
+    expect(html).not.toContain('Cancel order');
+    expect(html).not.toContain('Request return');
   });
   it.each(["cod", "paypal", undefined] as const)(
     "does not offer Stripe checkout for method %s",

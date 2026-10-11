@@ -36,7 +36,7 @@ import {
   resetPasswordSchema,
   resendVerificationSchema,
 } from "../validation/authSchemas.js";
-import { verificationAccountLimiter } from '../config/rateLimit.js';
+import { verificationAccountLimiter, userActionLimiter } from '../config/rateLimit.js';
 
 const router = express.Router();
 
@@ -48,7 +48,7 @@ router.post("/login", validate(loginSchema), loginLimiter, login);
 router.post('/resend-verification', validate(resendVerificationSchema), verificationAccountLimiter, resendVerification);
 router.post("/logout", logout);
 
-router.get("/verify-email/:token", verifyEmail);
+router.post("/verify-email/:token", verifyEmail);
 /* protect only — unverified users must be able to resend. Placed before router.use(verifiedEmail). */
 router.post("/send-verification-email", protect, sendVerificationEmail);
 
@@ -65,6 +65,7 @@ router.get("/csrf-token", csrfToken);
    PROTECTED ROUTES – Must be logged in + verified email
    ============================ */
 router.use(protect);
+router.use(userActionLimiter);
 router.use(verifiedEmail);
 
 /* ============================

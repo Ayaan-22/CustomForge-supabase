@@ -25,7 +25,9 @@ import {
   paymentPresentation,
   recordedAmount,
   stripeCheckoutUrl,
+  paymentTimeRemaining,
 } from "@/lib/payment-presentation";
+import { usePaymentClock } from '@/hooks/use-payment-clock';
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatPrice } from "@/lib/format";
@@ -38,9 +40,12 @@ export default function PaymentPage() {
   const orderQuery = useQuery({
     queryKey: ["orders", orderId],
     queryFn: () => OrderService.get(orderId).then(requireSuccess),
+    refetchInterval: query => query.state.data?.data?.paymentMethod === 'stripe' &&
+      query.state.data.data.isPaid === false && ['pending','processing'].includes(query.state.data.data.status) ? 30_000 : false,
   });
   const order = orderQuery.data?.data;
-  const state = order ? paymentPresentation(order) : null;
+  const now = usePaymentClock(order?.isPaid === false ? order.paymentExpiresAt : undefined);
+  const state = order ? paymentPresentation(order, now) : null;
   const payment = useMutation({
     mutationFn: async () => {
       const result = requireSuccess(
@@ -63,7 +68,7 @@ export default function PaymentPage() {
   });
   const busy = payment.isPending || handingOff;
   function pay() {
-    if (submitting.current || state !== "ready") return;
+    if (submitting.current || !order || paymentPresentation(order) !== "ready") return;
     submitting.current = true;
     payment.mutate();
   }
@@ -124,7 +129,7 @@ export default function PaymentPage() {
               <ShieldCheck size={18} aria-hidden="true" />
               <span>YOUR PAYMENT</span>
               <span className="forge-payment-tag">
-                {state === "confirmed" ? "CONFIRMED" : "ORDER SAVED"}
+                {state === 'review' ? 'NEEDS REVIEW' : state === "confirmed" ? "CONFIRMED" : "ORDER SAVED"}
               </span>
             </div>
             {state === "ready" ? (
@@ -143,6 +148,11 @@ export default function PaymentPage() {
                   here after payment; your order updates when payment is
                   confirmed by the server.
                 </p>
+                {order.paymentExpiresAt && <p className="forge-payment-description" suppressHydrationWarning>
+                  {paymentTimeRemaining(order, now)}. Pay within two hours of placing your order.
+                  Unpaid orders are automatically cancelled after the deadline.
+                  Open a new checkout with at least 31 minutes remaining; an existing checkout can be resumed until it expires.
+                </p>}
                 <ol className="forge-payment-steps">
                   <li>
                     <i>01</i>
@@ -211,7 +221,7 @@ export default function PaymentPage() {
                   <AlertCircle size={42} aria-hidden="true" />
                 )}
                 <h2 id="payment-title">
-                  {state === "confirmed"
+                  {state === 'expired' ? 'Payment window ended.' : state === 'review' ? 'Payment needs review.' : state === "confirmed"
                     ? "Payment confirmed."
                     : state === "delivery"
                       ? "Pay on delivery."
@@ -222,7 +232,7 @@ export default function PaymentPage() {
                           : "This payment method is unavailable."}
                 </h2>
                 <p>
-                  {state === "confirmed"
+                  {state === 'expired' ? 'We’re checking payment before automatically cancelling this unpaid order and releasing its items. If you already paid, wait for confirmation.' : state === 'review' ? 'Your payment was received after the item reservation ended. This order cannot be sent until the store reviews it. Do not pay again; contact store support with your order number.' : state === "confirmed"
                     ? "Your order already has a confirmed payment. View its current progress and invoice."
                     : state === "delivery"
                       ? "Payment will be collected on delivery. No card payment is required here."
@@ -232,7 +242,7 @@ export default function PaymentPage() {
                           ? `This order is ${order.status}. Review its current details for next steps.`
                           : "Review your order details or contact store support for help with payment."}
                 </p>
-                {state === "missing-total" && (
+                {(state === "missing-total" || state === "expired") && (
                   <Button
                     variant="outline"
                     disabled={orderQuery.isFetching}

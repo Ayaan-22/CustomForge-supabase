@@ -6,6 +6,12 @@ beforeEach(()=>{vi.resetModules();vi.clearAllMocks();});
 afterEach(()=>vi.unstubAllGlobals());
 
 describe('signed-out verification transport',()=>{
+  it('preserves the session when server logout revocation fails',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(url:string)=>url.endsWith('/csrf-token')?json({data:{csrfToken:'csrf'}}):json({message:'Unavailable'},503)));
+    const {AuthService}=await import('@/services/auth-service');
+    expect((await AuthService.logout()).error?.status).toBe(503);
+    expect(state.clearAuth).not.toHaveBeenCalled();
+  });
   it('sends password proof and CSRF without a bearer token or auth refresh retry',async()=>{
     const calls: Array<{url:string;init:RequestInit}> = [];
     vi.stubGlobal('fetch',vi.fn(async(url:string,init:RequestInit={})=>{
@@ -25,12 +31,13 @@ describe('signed-out verification transport',()=>{
   });
   it('normalizes a verified session with its user instead of storing an orphan token',async()=>{
     const user={id:'verified-user',isEmailVerified:true};
-    const fetch=vi.fn(async()=>json({token:'verified-access',data:{user}}));
+    const fetch=vi.fn(async(url: string, _init?: RequestInit)=>url.endsWith('/csrf-token') ? json({data:{csrfToken:'confirmation-csrf'}}) : json({token:'verified-access',data:{user}}));
     vi.stubGlobal('fetch',fetch);
     const {AuthService}=await import('@/services/auth-service');
     const result=await AuthService.verifyEmail('one-use-token');
     expect(result.data).toMatchObject({token:'verified-access',user});
     expect(state.setAuth).toHaveBeenCalledWith('verified-access',user);
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[1][1]).toMatchObject({method:'POST',headers:{'X-CSRF-Token':'confirmation-csrf'}});
   });
 });

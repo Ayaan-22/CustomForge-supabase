@@ -1,6 +1,6 @@
 # CustomForge — detailed project context
 
-Source-checked **October 6, 2026 (Asia/Karachi)**. This maintained reference describes the current repository, not a deployment certification or saved QA report. CustomForge is a personal project published on GitHub and remains in active development. See [AI_CONTEXT_short.md](AI_CONTEXT_short.md) for quick orientation.
+Source-checked **October 9, 2026 (Asia/Karachi)**. This maintained reference describes the current repository, not a deployment certification or saved QA report. CustomForge is a personal project published on GitHub and remains in active development. See [AI_CONTEXT_short.md](AI_CONTEXT_short.md) for quick orientation.
 
 When code and documentation differ, current routes, controllers, package scripts and canonical migrations are authoritative. Older conceptual docs and dated reports can lag implementation. Update this reference with relevant source changes.
 
@@ -12,7 +12,7 @@ CustomForge sells gaming hardware, peripherals, accessories, games and prebuilt 
 | --- | --- |
 | Storefront | Catalog/search/filtering, deals, gallery/quick view, wishlist, four-product comparison, eight-slot PC builder, cart, checkout, account/security, addresses, orders and invoice printing/export. |
 | Admin | Product/customer/order/coupon/review management, sales/inventory/overview analytics, activity logs and profile/security. Shared layouts, pagination and light/dark/system appearance. |
-| Identity | Custom Express authentication against public.users, email verification, rotating refresh tokens and Speakeasy TOTP; not Supabase Auth sign-in. |
+| Identity | Custom Express authentication against public.users, explicit email confirmation, purpose-bound access/refresh JWTs, atomic refresh rotation and OTPAuth TOTP; not Supabase Auth sign-in. |
 | Checkout | An owner-scoped PostgreSQL transaction reserves inventory and creates an unpaid order. COD and Stripe hosted Checkout are implemented choices. |
 | Payments | Signed Stripe payment/refund webhook handling and COD collection. PayPal, direct intent/process compatibility flows, provider saved-card enrollment and admin refund execution are unavailable. |
 | Reviews | Public approved/active reviews, owner create/read/update/delete and moderation/publication safeguards. |
@@ -93,15 +93,15 @@ Both browser apps call **their own origin's /api/v1**. Next rewrites forward to 
 
 [client/lib/apiClient.ts](client/lib/apiClient.ts) returns data/error/status envelopes; [admin/lib/transport.ts](admin/lib/transport.ts) throws ApiError and returns Response. Controller response shapes vary: use service/DTO/mappers rather than assuming one raw envelope.
 
-Authenticated requests carry an in-memory Bearer token and credentials: include. Mutations fetch fresh CSRF, send X-CSRF-Token and bound CSRF-rejection retry. Refresh uses single-flight promises and navigator.locks where available; providers use same-origin BroadcastChannel session signals. Preserve exact login challenge credentials; distinguish TOTP-required responses from expired sessions.
+Authenticated requests carry an in-memory Bearer token and credentials: include. Mutations fetch fresh CSRF, send X-CSRF-Token and bound CSRF-rejection retry. Refresh uses per-tab single-flight promises, same-origin BroadcastChannel memory-only session exchange and navigator.locks with a state recheck. Cookie-changing authentication requests share the lock. Locks/broadcasts are origin scoped; cookies can be shared across ports on the same hostname, so server conflicts must remain recoverable. Preserve exact login challenge credentials; distinguish TOTP-required responses from expired sessions.
 
 Express ordering in [app.js](server/app.js):
 
-1. trust proxy = 1, Helmet, credentialed CORS.
+1. Configurable TRUST_PROXY (default one hop), Helmet, credentialed CORS.
 2. Stripe webhook with its limiter and express.raw(application/json), **before** JSON parsing, global CSRF, normal request context/logging and the protected payment router.
-3. Compression, request context/ID/logging and public/specialized/API limiters.
-4. JSON/URL-encoded parsing (10kb), cookies, xss-clean/hpp and unsafe-method CSRF.
-5. /uploads and API routers; per-route Bearer, verified-email, role/TOTP and validation middleware.
+3. Compression, request context/ID/logging and pre-authentication IP/auth limits.
+4. JSON/URL-encoded parsing (10kb), cookies, hpp and unsafe-method CSRF. Rendering uses escaping rather than blanket input rewriting.
+5. /uploads and API routers; per-route Bearer, account-keyed limits after authentication, verified-email, role/TOTP and validation middleware.
 6. Allowed development email router, process health, 404 and global error logging/handling.
 
 Public auth POSTs do not need a Bearer token but **do need CSRF**. The webhook instead uses provider signature/protocol checks. Health is process health, not migration/database/provider readiness. Production proxy topology must match trust proxy and webhook sender-IP handling.
@@ -111,18 +111,18 @@ Public auth POSTs do not need a Bearer token but **do need CSRF**. The webhook i
 CustomForge authenticates public.users itself. A Supabase Auth account alone is not an application account. Registration creates a user role; elevation is separate. Passwords are bcrypt hashes. Public serialization strips secrets in database and domain naming styles.
 
 - POST /auth/register creates an unverified account and sends welcome/verification mail; no session is issued.
-- GET /auth/verify-email/:token validates the hashed expiring link, marks verified and issues a session pair.
+- The email GET opens a frontend confirmation page without consuming the link. POST /auth/verify-email/:token validates CSRF and the hashed expiring link, marks verified and issues a session pair after explicit confirmation. API GET returns 405 without mutation.
 - POST /auth/login requires active verified credentials and, for TOTP-enabled accounts, a valid challenge code before session issuance.
 - POST /auth/resend-verification is signed-out email/password-proven recovery and sends a new link without login; POST /auth/send-verification-email requires a Bearer session.
 - Reset consumes its token and issues updated session state. Password changes invalidate old access tokens through password_changed_at checks.
 
-[generateToken.js](server/utils/generateToken.js) uses JWT_ALGORITHM (HS256 default). Issued access pairs use JWT_SHORT_EXPIRES_IN (15m default). Refresh lifetime uses JWT_REFRESH_EXPIRES_IN, then JWT_EXPIRES_IN, then 30d. General signToken also defaults to 30d. These are distinct settings; the old seven-day access-cookie claim is incorrect.
+[generateToken.js](server/utils/generateToken.js) uses JWT_ALGORITHM (HS256 default), distinct token purposes/audiences and unique refresh jti. Access pairs use JWT_SHORT_EXPIRES_IN (15m default). Refresh lifetime uses JWT_REFRESH_EXPIRES_IN, then JWT_EXPIRES_IN, then 30d. signToken requires explicit expiry. Protected routes reject refresh JWTs; refresh/logout reject access JWTs. Previously issued untyped JWTs require a new sign-in.
 
 Access tokens are JSON-returned and memory-held: **no jwt access-token cookie or browser-storage session token**. refresh_token is HttpOnly, SameSite=Strict and Secure in production. csrf_token is intentionally browser-readable, Strict and Secure in production. Anonymous bootstrap uses an HttpOnly anon_session.
 
-Refresh validates cookie JWT, active user, stored refresh_token_hash and refresh_token_expires, then rotates the pair. The row stores one refresh binding per user, not per-device sessions. Cookie expiry separately uses JWT_REFRESH_COOKIE_EXPIRES_IN (30-day default); server/token validity still applies.
+Refresh validates cookie JWT, active user, stored refresh_token_hash and refresh_token_expires, then atomically compare-and-swaps the binding, fencing the observed password-change timestamp. One concurrent request can win; stale/replayed requests issue no cookies. The row stores one refresh binding per user, not per-device sessions. Cookie/database expiry starts at issuance using JWT_REFRESH_COOKIE_EXPIRES_IN (30-day default), capped by JWT expiry. Logout awaits conditional cookie-bound invalidation; a changed binding returns 409 and database failure returns 503, preserving cookies for retry. Existing short-lived access JWTs remain valid until expiry or password/account invalidation.
 
-CSRF compares header/cookie to an HMAC bound to the current refresh token or anonymous session. Fetch GET /auth/csrf-token before unsafe calls and after rotation. CSRF_SECRET falls back to JWT_SECRET and a utility development fallback; configure a real secret. Mixing localhost/127.0.0.1 for direct browser/API requests breaks cookie assumptions; retain same-origin proxying rather than weakening policy.
+CSRF compares header/cookie to an HMAC bound to the current refresh token or anonymous session. Fetch GET /auth/csrf-token before unsafe calls and after rotation. Production requires CSRF_SECRET distinct from JWT_SECRET at startup and token construction; fallback is development-only. Mixing localhost/127.0.0.1 for direct browser/API requests breaks cookie assumptions; retain same-origin proxying rather than weakening policy.
 
 Verification links default to 24 hours; reset links to 10 minutes. TOTP enrollment returns a manual base32 secret and otpauth URI, then /auth/2fa/verify confirms authenticated setup. It is not a second login endpoint. Sensitive routes accept their supported X-2FA-Token/body proof when enabled. Admin guards require admin role, verification and conditional TOTP; they do not require every admin to enroll TOTP.
 
@@ -135,7 +135,7 @@ Verification links default to 24 hours; reset links to 10 minutes. TOTP enrollme
 | getSupabaseClient(req), no bound identity | Anonymous public reads. |
 | After protect/optionalAuth identity binding | Database-only HS256 JWT, authenticated role, verified UUID subject, 60s expiry; owner RLS applies even to application admins. Requires SUPABASE_JWT_SECRET. |
 | getAuthClient() | Users-only select/insert/update for auth controller/JWT middleware; no general RPC/schema/storage capability. |
-| getServiceClient() | Privileged admin/provider boundary. The request-context misuse proxy operates outside production; production also relies on correct source/route boundaries. |
+| getServiceClient() | Privileged admin/provider/background-worker boundary. The request-context misuse proxy rejects customer-route use in every environment, including captured client methods. Raw service client initialization is shared. |
 
 Do not send the app access JWT directly to PostgREST, trust caller-supplied database identity or add a customer service-role fallback. SUPABASE_JWT_SECRET is separate from JWT_SECRET and must match compatible deployed shared signing configuration. An incompatible/asymmetric setup requires an integration change, not fabricated signing credentials.
 
@@ -151,6 +151,9 @@ Models require explicit clients. Public reads use security-invoker/barrier proje
 4. [20261003_atomic_checkout.sql](server/models/migrations/20261003_atomic_checkout.sql): checkout_cart and narrowed grants.
 5. [20261004_admin_analytics.sql](server/models/migrations/20261004_admin_analytics.sql): aggregation RPC/indexes.
 6. [20261004_cancel_unpaid_order.sql](server/models/migrations/20261004_cancel_unpaid_order.sql): atomic owner cancellation/restocking.
+7. [20261008_stripe_reservation_recovery.sql](server/models/migrations/20261008_stripe_reservation_recovery.sql): durable payment attempts, terminal reservation release and atomic settlement.
+8. [20261008_order_email_outbox.sql](server/models/migrations/20261008_order_email_outbox.sql): transactional confirmation jobs and renewable worker leases/retries.
+9. [20261009_stripe_payment_deadline.sql](server/models/migrations/20261009_stripe_payment_deadline.sql): immutable two-hour order payment deadlines, checkout fencing and legacy customer reconciliation.
 
 Inspect existing applied changes before upgrading; do not replay old hardening over later policies. add_stripe_customer_id.sql is a compatibility helper; base schema already has stripe_customer_id/payment_methods. admin/scripts/schema.sql is an alternate cleanup candidate, not setup authority.
 
@@ -185,7 +188,7 @@ SQL validates active/verified ownership, shipping fields, 1–50 cart lines, pub
 
 Current decimal USD arithmetic: discounted subtotal = items minus coupon; shipping = 0 at subtotal >=100, otherwise 10; tax = round(discounted subtotal × 0.10, 2); total = discounted subtotal + shipping + tax. These are implementation defaults, not configurable/jurisdiction-specific tax policy. Cart preview and Stripe integer cents must agree with SQL totals.
 
-New orders are pending/unpaid and return 201; replay returns 200. Confirmation email is scheduled after commit, skipped on replay, and cannot undo the order if it fails. setImmediate is not a durable email queue.
+New orders are pending/unpaid and return 201; replay returns 200. An orders INSERT trigger queues one confirmation job in the same transaction; rollback queues none and replay adds none. API workers claim leased jobs, renew ownership and retry SMTP failures with backoff. Delivery is at least once; a crash after SMTP acceptance but before acknowledgement can produce a duplicate. Existing historical orders are not backfilled into the queue.
 
 POST /orders/cancel/:id uses cancel_unpaid_order: owner-only pending unpaid COD, transactional locks/restock/sales reversal and repeat-safe cancellation. Coupon usage remains consumed. Stripe cancellation needs provider reconciliation and is unavailable in this function.
 
@@ -197,7 +200,7 @@ Admin cannot arbitrarily set paid/refunded/terminal states. Eligible fulfillment
 | --- | --- |
 | POST /payment/create-stripe-session | Hosted Checkout for an owned eligible unpaid Stripe order; amount/customer/session checks, provider idempotency and version-checked binding persistence. |
 | COD | Selected during POST /orders, collected through eligible admin actions; no payment/process settlement or method switch. |
-| POST /payment/webhook | Signature/raw-body handling for payment_intent.succeeded, payment_intent.payment_failed, payment_intent.canceled and charge.refunded; production adds sender-IP handling. |
+| POST /payment/webhook | Signature/raw-body handling for payment_intent.succeeded, payment_intent.payment_failed, payment_intent.canceled, checkout.session.expired and charge.refunded; production adds sender-IP handling. |
 | GET /payment/payment-methods | Existing card metadata after verifying Stripe customer ownership: id/type/brand/last4/expiry, not raw card data. |
 | POST /payment/payment-methods | 503: verified provider enrollment/consent lifecycle is unavailable. Dormant detach handler also returns 503 and is not a mounted DELETE route. |
 | /users/payment-methods CRUD | Separate owned legacy metadata CRUD remains mounted. CVV/CVC and non-last-four cardNumber input are rejected; card_number is redacted in responses. It does not enroll a Stripe card or authorize payment. |
@@ -207,6 +210,8 @@ Admin cannot arbitrarily set paid/refunded/terminal states. Eligible fulfillment
 
 Successful Stripe settlement checks exact minor-unit amount, USD currency, owner/order/customer metadata and PaymentIntent identity. Version-checked write failures remain retriable, not acknowledged success. Refund events preserve monotonic cumulative totals. This is not a durable provider event/reconciliation ledger. Success-page navigation alone is not settlement.
 
+New Stripe orders have an immutable payment_expires_at two hours after creation; DTO paymentExpiresAt drives the storefront countdown. A provider attempt uses this deadline with at most one session, without extending it on retries. New Checkout creation requires 31 minutes remaining; an existing open session can be resumed until expiry. A startup/minute sweep expires abandoned sessions and confirms unpaid status before atomically cancelling/restoring stock, sales and coupon usage. Ambiguous creation retains a five-minute grace. Processing payments, provider outages and incomplete/ambiguous scans remain reserved for reconciliation. Missing legacy customer bindings use a bounded account-wide provider scan and service-only identity recovery under the order lock. Late captured payments after release are paid + payment_review and cannot proceed through fulfillment/returns until reconciled. Startup probes queue tables and the deadline column before listening; apply October 8 and October 9 migrations first. Existing non-legacy attempts retain their earlier native expiry.
+
 Configure the signed webhook, safe redirect origin and matching environment before validating a deployment flow. No merchant-policy or hosted certification is implied.
 
 ## 12. API ownership and canonical examples
@@ -215,7 +220,7 @@ Base: /api/v1. [routeInventory.js](server/routes/routeInventory.js) is the exact
 
 | Group | Canonical routes/access |
 | --- | --- |
-| Auth bootstrap | GET /auth/csrf-token; POST /auth/register, /login, /logout, /refresh, /forgot-password, /reset-password/:token, /resend-verification; GET /auth/verify-email/:token. Unsafe methods need CSRF even without Bearer auth. |
+| Auth bootstrap | GET /auth/csrf-token; POST /auth/register, /login, /logout, /refresh, /forgot-password, /reset-password/:token, /resend-verification, /verify-email/:token. Unsafe methods need CSRF even without Bearer auth. |
 | Account auth | POST /auth/send-verification-email; PATCH /auth/update-password; POST /auth/2fa/enable, /verify; DELETE /auth/2fa/disable. Per-operation access differs. |
 | Session/profile | GET /users/me is optionalAuth (anonymous data null). /users/profile, addresses, wishlist and other protected routes need verified auth; sensitive changes add conditional TOTP. |
 | Catalog | GET /products, /top, /search, /categories, /brands, /facets, /featured, /category/:category, /:id, /:id/related, /:id/reviews. Public reads do not need login. |
@@ -249,7 +254,8 @@ Never put real secrets, account emails/passwords, project IDs or personal machin
 | SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY | Backend scoped clients; service credentials never enter browser code. |
 | SUPABASE_JWT_SECRET | Compatible database JWT signing, distinct from JWT_SECRET. |
 | JWT_SECRET, JWT_ALGORITHM, JWT_SHORT_EXPIRES_IN, JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN, JWT_REFRESH_COOKIE_EXPIRES_IN | App token/cookie policy. |
-| CSRF_SECRET | Request binding. |
+| CSRF_SECRET | Request binding; required and distinct from JWT_SECRET in production. |
+| REDIS_URL, TRUST_PROXY | Optional shared limiter store and trusted proxy topology. Configured Redis fails closed; memory counters support one API process only. |
 | STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET | Provider initialization/signature checks; test mode for local payment work. |
 | EMAIL_HOST, EMAIL_PORT, EMAIL_USERNAME, EMAIL_PASSWORD, EMAIL_FROM; CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET | Mail and images. |
 | `RATE_*` and `LOG_*`; ENABLE_DEV_ROUTES | Existing limiter/logger settings and opt-in test-mode email helpers; inspect source for exact supported flags. |

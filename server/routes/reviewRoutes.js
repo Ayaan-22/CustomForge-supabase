@@ -10,6 +10,7 @@ import {
   getOwnProductReview,
 } from "../controllers/reviewController.js";
 import { protect, verifiedEmail } from "../middleware/authMiddleware.js";
+import { userActionLimiter } from "../config/rateLimit.js";
 import { deprecatedRoute } from "../middleware/deprecatedRoute.js";
 
 const router = express.Router();
@@ -29,6 +30,7 @@ router.get(
 );
 
 router.use(protect);
+router.use(userActionLimiter);
 router.use(verifiedEmail);
 router.get("/products/:id/mine", getOwnProductReview);
 router.patch("/:reviewId", updateReviewController);

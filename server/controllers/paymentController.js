@@ -4,9 +4,13 @@ import Stripe from "stripe";
 import { getServiceClient, getSupabaseClient } from "../config/db.js";
 import { logger } from "../middleware/logger.js";
 import AppError from "../utils/appError.js";
+import {createStripeRecovery, findStripeSessions, loadStripeAttempt, providerId, verifyStripeSession, verifyStripeIntent} from '../utils/stripeRecovery.js';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {timeout:10000,maxNetworkRetries:1});
 const serviceSupabase = getServiceClient();
+const stripeRecovery = createStripeRecovery({stripe, db:serviceSupabase, logger, settle:handleSuccessfulPayment});
+// Started only by server.js, outside request context. Tests/imports never start a worker.
+export const startStripeRecoveryWorker = () => stripeRecovery.start();
 
 // Payment configuration
 const PAYMENT_CONFIG = {
@@ -183,8 +187,14 @@ export const handleWebhook = asyncHandler(async (req, res, next) => {
         break;
 
       case "payment_intent.canceled":
-        logger.info("Payment intent cancelled", {
-          paymentIntentId: event.data.object.id,
+        if (event.data.object.metadata?.orderId) await stripeRecovery.recoverEvent({
+          orderId:event.data.object.metadata.orderId, canceledIntent:event.data.object,
+        });
+        break;
+
+      case "checkout.session.expired":
+        if (event.data.object.metadata?.orderId) await stripeRecovery.recoverEvent({
+          orderId:event.data.object.metadata.orderId, sessionId:event.data.object.id,
         });
         break;
 
@@ -212,7 +222,7 @@ export const handleWebhook = asyncHandler(async (req, res, next) => {
 /**
  * Handle successful payment webhook
  */
-async function handleSuccessfulPayment(paymentIntent) {
+async function handleSuccessfulPayment(paymentIntent, verifiedContext = null) {
   if (
     !paymentIntent ||
     !paymentIntent.metadata ||
@@ -225,11 +235,8 @@ async function handleSuccessfulPayment(paymentIntent) {
   const orderId = paymentIntent.metadata.orderId;
 
   try {
-    const { data: order, error } = await serviceSupabase
-      .from("orders")
-      .select("*")
-      .eq("id", orderId)
-      .maybeSingle();
+    const {data:order, error} = verifiedContext ? {data:verifiedContext.order, error:null}
+      : await serviceSupabase.from('orders').select('*').eq('id',orderId).maybeSingle();
 
     if (error) {
       logger.error("Order lookup failed in webhook success handler", {
@@ -244,54 +251,38 @@ async function handleSuccessfulPayment(paymentIntent) {
     }
 
     if (order.payment_method !== 'stripe' || paymentIntent.metadata.userId !== String(order.user_id)
-      || !order.payment_result?.stripeCustomerId || paymentIntent.customer !== order.payment_result.stripeCustomerId) {
+      || paymentIntent.status !== 'succeeded') {
       throw new AppError('Payment ownership does not match order',409);
     }
     if (paymentIntent.currency !== PAYMENT_CONFIG.CURRENCY) throw new AppError('Payment currency does not match order',400);
     validatePaymentAmount(paymentIntent.amount_received, order.total_price);
     if (order.is_paid) {
-      if (order.payment_result?.transaction_id !== paymentIntent.id) throw new AppError('Conflicting payment requires reconciliation',409);
+      if (order.payment_result?.transaction_id !== paymentIntent.id
+        || (order.payment_result?.stripeCustomerId && providerId(paymentIntent.customer) !== order.payment_result.stripeCustomerId)) {
+        throw new AppError('Conflicting payment requires reconciliation',409);
+      }
       return;
     }
-    if (!['pending','processing'].includes(order.status)) throw new AppError('This order cannot accept payment',409);
-
-    const nowIso = new Date().toISOString();
-
-    const paymentResult = {
-      ...order.payment_result,
-      id: paymentIntent.id,
-      status: "succeeded",
-      update_time: nowIso,
-      email_address:
-        paymentIntent.receipt_email ||
-        paymentIntent.metadata?.userEmail ||
-        null,
-      payment_method: "stripe",
-      transaction_id: paymentIntent.id,
-    };
-
-    const { data: written, error: updateError } = await serviceSupabase
-      .from("orders")
-      .update({
-        is_paid: true,
-        paid_at: nowIso,
-        payment_method: "stripe",
-        payment_result: paymentResult,
-        status:
-          order.status === "pending" || order.status === "processing"
-            ? "paid"
-            : order.status,
-        updated_at: nowIso,
-      })
-      .eq("id", orderId).eq("updated_at", order.updated_at).select("id").maybeSingle();
-
-    if (updateError || !written) {
-      logger.error("Order update failed in webhook success handler", {
-        error: updateError?.message || "Concurrent order change",
-        orderId,
-      });
-      throw new AppError("Unable to persist payment event", 503);
+    const attempt = verifiedContext?.attempt || await loadStripeAttempt(serviceSupabase, order.id);
+    if (!attempt || providerId(paymentIntent.customer) !== attempt.customer_id
+      || (!attempt.legacy && paymentIntent.metadata.attemptId !== String(attempt.attempt_id))) {
+      throw new AppError('Payment attempt does not match order',409);
     }
+    verifyStripeIntent(paymentIntent,order,attempt);
+    const sessions = verifiedContext?.session ? [verifiedContext.session]
+      : await findStripeSessions(stripe,order,attempt,paymentIntent.id);
+    if (sessions.length !== 1) throw new AppError('Payment session requires reconciliation',409);
+    const session = verifyStripeSession(sessions[0],order,attempt);
+    if (providerId(session.payment_intent) !== paymentIntent.id) throw new AppError('Payment intent does not match session',409);
+    const {data:written,error:updateError} = await serviceSupabase.rpc('settle_stripe_order', {
+      p_order_id:order.id,p_attempt_id:attempt.attempt_id,p_session_id:session.id,p_intent_id:paymentIntent.id,
+      p_customer_id:attempt.customer_id,p_amount_cents:paymentIntent.amount_received,p_currency:paymentIntent.currency,
+      p_email:paymentIntent.receipt_email || null,
+    });
+    if (updateError || !written) throw new AppError('Unable to persist payment event',503);
+    if (written.reconciliationRequired) logger.error('Payment captured after inventory release; fulfillment is blocked', {
+      orderId:order.id,paymentIntentId:paymentIntent.id,
+    });
 
     logger.info("Payment webhook processed successfully", {
       orderId,
@@ -461,30 +452,15 @@ export const createStripeSession = asyncHandler(async (req, res, next) => {
   }
 
   if (order.payment_method !== "stripe") throw new AppError("This order does not use Stripe", 409);
+  if (order.payment_expires_at && new Date(order.payment_expires_at).getTime() <= Date.now()) {
+    throw new AppError("The two-hour payment window has ended. This unpaid order will be cancelled automatically; create a new order.",409);
+  }
   const amount = Math.round(Number(order.total_price) * 100);
   if (!Number.isSafeInteger(amount) || amount <= 0 || amount > PAYMENT_CONFIG.MAX_PAYMENT_AMOUNT) throw new AppError("Invalid order amount", 400);
   const origin = process.env.CLIENT_URL || process.env.FRONTEND_URL;
   let redirectOrigin;
   try { const url = new URL(origin); if (url.username || url.password || !['http:', 'https:'].includes(url.protocol) || (url.protocol !== 'https:' && !['localhost','127.0.0.1'].includes(url.hostname))) throw new Error(); redirectOrigin = url.origin; }
   catch { throw new AppError("Payment redirects are not configured", 503); }
-
-  const previousSession = order.payment_result?.checkoutSessionId;
-  if (previousSession) {
-    const existingSession = await stripe.checkout.sessions.retrieve(previousSession);
-    if (existingSession.status !== 'expired') {
-      if (existingSession.metadata?.orderId !== String(order.id) || existingSession.metadata?.userId !== String(req.user.id)
-        || existingSession.amount_total !== amount || existingSession.currency !== PAYMENT_CONFIG.CURRENCY
-        || typeof existingSession.customer !== 'string') throw new AppError('Payment session could not be verified',409);
-      await verifyCustomer(existingSession.customer,req.user.id);
-      if (!order.payment_result?.stripeCustomerId) {
-        const {data:saved,error} = await supabase.from('orders').update({payment_result:{...order.payment_result,stripeCustomerId:existingSession.customer},updated_at:new Date().toISOString()})
-          .eq('id',order.id).eq('updated_at',order.updated_at).eq('is_paid',false).select('id').maybeSingle();
-        if (error || !saved) throw new AppError('Payment session could not be saved. Please retry.',503);
-      } else if (order.payment_result.stripeCustomerId !== existingSession.customer) throw new AppError('Payment account conflict requires reconciliation',409);
-      if (existingSession.status === 'open' && existingSession.url) return res.json({success:true,sessionId:existingSession.id,url:existingSession.url});
-      throw new AppError('Payment is being confirmed. Refresh your order before retrying.',409);
-    }
-  }
 
   const { data: userRow, error: userError } = await supabase
     .from("users")
@@ -511,34 +487,79 @@ export const createStripeSession = asyncHandler(async (req, res, next) => {
     if (customerError) throw new AppError("Unable to save payment account", 503);
   }
 
-  const session = await stripe.checkout.sessions.create({
+  const {data:attempt,error:claimError} = await supabase.rpc('claim_stripe_checkout', {
+    p_order_id:order.id,p_redirect_origin:redirectOrigin,
+  });
+  if (claimError?.code === 'P0001' && /not enough time/i.test(claimError.message || '')) {
+    throw new AppError('New checkout must start with at least 31 minutes left before the payment deadline. This unpaid order will be cancelled when its payment window ends.',409);
+  }
+  if (claimError || !attempt) throw new AppError(claimError?.code === 'P0001'
+    ? 'This payment reservation has expired or is unavailable. Review your order before starting a new checkout.'
+    : 'Unable to reserve payment checkout. Please retry.', claimError?.code === 'P0001' ? 409 : 503);
+  await verifyCustomer(attempt.customer_id,req.user.id);
+
+  let session;
+  if (attempt.session_id) {
+    session = verifyStripeSession(await stripe.checkout.sessions.retrieve(attempt.session_id),order,attempt);
+  } else {
+    // Look for an orphaned response before issuing another create. All retries of
+    // a new attempt use identical parameters and the same key before its expiry.
+    const existing = await findStripeSessions(stripe,order,attempt);
+    if (existing.length > 1) throw new AppError('Multiple payment sessions require reconciliation',409);
+    session = existing[0];
+    if (!session && attempt.legacy) throw new AppError('The previous payment attempt is being reconciled. Please review your order later.',409);
+  }
+  if (session) {
+    if (session.status !== 'open' || !session.url) throw new AppError(
+      session.status === 'expired' ? 'This payment session has expired. Inventory will be restored automatically; create a new order.'
+        : 'Payment is being confirmed. Refresh your order before retrying.',409);
+    if (!attempt.session_id) {
+      const {error:bindError} = await supabase.rpc('bind_stripe_checkout', {
+        p_order_id:order.id,p_attempt_id:attempt.attempt_id,p_session_id:session.id,
+        p_customer_id:attempt.customer_id,p_intent_id:providerId(session.payment_intent),
+      });
+      if (bindError) throw new AppError('Payment session could not be saved. Please retry.',503);
+    }
+    return res.json({success:true,sessionId:session.id,url:session.url});
+  }
+  const expiresAt = Math.floor(new Date(attempt.expires_at).getTime() / 1000);
+  if (expiresAt < Math.floor(Date.now() / 1000) + 31 * 60) throw new AppError(
+    'The payment attempt timed out. Its reservation will be restored automatically; create a new order.',409);
+
+  session = await stripe.checkout.sessions.create({
     payment_intent_data: {
-      metadata: sanitizeMetadata({ orderId: String(order.id), userId: String(req.user.id) }),
+      metadata: sanitizeMetadata({orderId:String(order.id),userId:String(req.user.id),attemptId:String(attempt.attempt_id)}),
     },
-    customer: customerId,
+    customer: attempt.customer_id,
+    expires_at: expiresAt,
     payment_method_types: ["card"],
     line_items: [
       {
         price_data: {
           currency: "usd",
           product_data: {
-            name: `Order #${order.order_number || order.id}`,
+            name: `Order #${order.id}`,
           },
-          unit_amount: amount,
+          unit_amount: Number(attempt.amount_cents),
         },
         quantity: 1,
       },
     ],
     mode: "payment",
-    success_url: `${redirectOrigin}/orders/${order.id}?success=true`,
-    cancel_url: `${redirectOrigin}/orders/${order.id}?canceled=true`,
+    success_url: `${attempt.redirect_origin}/orders/${order.id}?success=true`,
+    cancel_url: `${attempt.redirect_origin}/orders/${order.id}?canceled=true`,
     metadata: sanitizeMetadata({
       orderId: String(order.id),
       userId: String(req.user.id),
+      attemptId: String(attempt.attempt_id),
     }),
-  }, {idempotencyKey: `checkout-${order.id}-${previousSession || 'initial'}`});
+  }, {idempotencyKey:`checkout-${attempt.attempt_id}`});
 
-  const {data: savedSession, error: sessionError} = await supabase.from("orders").update({payment_result:{...order.payment_result,checkoutSessionId:session.id,stripeCustomerId:customerId},updated_at:new Date().toISOString()}).eq("id",order.id).eq("is_paid",false).eq("status",order.status).eq("updated_at",order.updated_at).select("id").maybeSingle();
+  verifyStripeSession(session,order,attempt);
+  const {data:savedSession,error:sessionError} = await supabase.rpc('bind_stripe_checkout', {
+    p_order_id:order.id,p_attempt_id:attempt.attempt_id,p_session_id:session.id,
+    p_customer_id:attempt.customer_id,p_intent_id:providerId(session.payment_intent),
+  });
   if (sessionError || !savedSession) throw new AppError("Unable to save payment session. Please retry.", 503);
   res.status(200).json({
     success: true,

@@ -4,6 +4,7 @@ import { publicUser } from "../utils/publicUser.js";
 import asyncHandler from "express-async-handler";
 import { getServiceClient } from "../config/db.js";
 import AppError from "../utils/appError.js";
+import { ensureOrderPaymentReconciled } from '../utils/paymentLifecycle.js';
 import { quotePostgrestFilterValue } from "../utils/postgrestFilters.js";
 import { logger } from "../middleware/logger.js";
 import cloudinary from "../utils/cloudinary.js";
@@ -1182,6 +1183,7 @@ export const updateOrderToDelivered = asyncHandler(async (req, res, next) => {
     throw new AppError("Order not found", 404);
   }
 
+  ensureOrderPaymentReconciled(order);
   if (!order.is_paid || order.status !== "shipped") {
     throw new AppError("Only a shipped, paid order can be delivered", 400);
   }
@@ -1228,6 +1230,7 @@ export const markOrderAsPaid = asyncHandler(async (req, res, next) => {
     throw new AppError("Order not found", 404);
   }
 
+  ensureOrderPaymentReconciled(order);
   if (order.is_paid) {
     throw new AppError("Order is already paid", 400);
   }
@@ -1294,6 +1297,7 @@ export const updateOrderStatus = asyncHandler(async (req, res, next) => {
   }
 
   const transitions={pending:['processing'],paid:['processing'],processing:['shipped']};
+  ensureOrderPaymentReconciled(order);
   if (!transitions[order.status]?.includes(status) || (order.payment_method !== 'cod' && !order.is_paid)) throw new AppError('Order is not eligible for this fulfillment transition',409);
   const { data: updated, error } = await supabase
     .from("orders")
@@ -1365,6 +1369,7 @@ export const processReturn = asyncHandler(async (req, res, next) => {
     throw new AppError("Order not found", 404);
   }
 
+  ensureOrderPaymentReconciled(order);
   if (order.return_status !== 'requested' || !['approved','rejected'].includes(returnStatus)) throw new AppError('Return is not eligible for this transition',409);
   const { data: updated, error } = await supabase
     .from("orders")
@@ -1411,6 +1416,7 @@ export const approveReturn = asyncHandler(async (req, res, next) => {
     throw new AppError("Order not found", 404);
   }
 
+  ensureOrderPaymentReconciled(order);
   if (order.return_status !== "requested") {
     throw new AppError("Order return is not in requested status", 400);
   }

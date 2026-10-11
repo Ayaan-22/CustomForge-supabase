@@ -50,26 +50,26 @@ router.get("/:id", getProduct);
    -------------------------------------------------------------------------- */
 router.post(
   "/:id/wishlist",
-  userActionLimiter,
   deprecatedRoute((req) => `/api/v1/users/wishlist/${encodeURIComponent(req.params.id)}`),
   protect,
+  userActionLimiter,
   verifiedEmail,
   restrictTo("user", "admin"),
   addToWishlist
 );
 router.delete(
   "/:id/wishlist",
-  userActionLimiter,
   deprecatedRoute((req) => `/api/v1/users/wishlist/${encodeURIComponent(req.params.id)}`),
   protect,
+  userActionLimiter,
   verifiedEmail,
   restrictTo("user", "admin"),
   removeFromWishlist
 );
 router.post(
   "/:id/reviews",
-  userActionLimiter,
   protect,
+  userActionLimiter,
   verifiedEmail,
   restrictTo("user", "admin"),
   createProductReview

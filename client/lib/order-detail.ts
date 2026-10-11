@@ -1,15 +1,19 @@
 import type { Order, OrderItem } from "./types";
 
+export function orderNeedsPaymentReview(order: Pick<Order, 'status' | 'paymentResult'>) {
+  return order.status !== 'refunded' && (order.status === 'payment_review' || order.paymentResult?.reconciliationRequired === true);
+}
+
 /** Display eligibility mirrors the existing order actions; the server rechecks it. */
 export function orderActionEligibility(
-  order: Pick<Order, "status" | "isPaid" | "paymentMethod">,
+  order: Pick<Order, "status" | "isPaid" | "paymentMethod" | "paymentResult">,
 ) {
   return {
     canCancel:
-      order.status === "pending" &&
+      !orderNeedsPaymentReview(order) && order.status === "pending" &&
       !order.isPaid &&
       order.paymentMethod === "cod",
-    canReturn: order.status === "delivered",
+    canReturn: !orderNeedsPaymentReview(order) && order.status === "delivered",
   };
 }
 

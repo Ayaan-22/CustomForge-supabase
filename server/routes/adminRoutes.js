@@ -68,7 +68,7 @@ import {
 import { getOrderById } from "../controllers/orderController.js";
 
 // Rate limiters (centralized config)
-import { logRateLimiter } from "../config/rateLimit.js";
+import { adminLimiter, logRateLimiter } from "../config/rateLimit.js";
 
 import upload from "../middleware/upload.js";
 
@@ -78,10 +78,11 @@ const router = express.Router();
    SECURITY & ACCESS CONTROL
    ========================================================================== */
 router.use(protect);
+router.use(adminLimiter);
 router.use(restrictTo("admin"));
 router.use(verifiedEmail);
 router.use(twoFactorAuth);
-// adminLimiter is applied at mount in app.js so unauthenticated probes are also throttled.
+// app.js retains an IP budget for unauthenticated probes.
 
 /* ============================================================================
    ANALYTICS & DASHBOARD ROUTES

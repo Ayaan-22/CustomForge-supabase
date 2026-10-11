@@ -14,8 +14,6 @@ import {
 } from "@/components/forge/auth-shell";
 import { PasswordInput } from "@/components/forge/password-input";
 import { AuthService } from "@/services/auth-service";
-import { storeAuthTokens } from "@/lib/apiClient";
-import type { User } from "@/lib/types";
 import {
   isInvalidResetLink,
   recoveryErrorMessage,
@@ -59,10 +57,6 @@ export default function ResetPasswordPage() {
         AuthService.resetPassword(token, { password, passwordConfirm }),
       );
       if (!response) return;
-      // The real API returns token and user; keep its existing in-memory session policy.
-      const data = response.data as { token?: string; user?: User } | null;
-      if (data?.token && data.user)
-        storeAuthTokens({ token: data.token, user: data.user });
       setPassword("");
       setPasswordConfirm("");
       setComplete(true);

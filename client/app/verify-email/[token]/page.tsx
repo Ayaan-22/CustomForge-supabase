@@ -11,7 +11,6 @@ import {
   AuthLoading,
 } from "@/components/forge/auth-shell";
 import { AuthService } from "@/services/auth-service";
-import { storeAuthTokens } from "@/lib/apiClient";
 import {
   createVerificationRequestCache,
   observeVerificationRequest,
@@ -20,7 +19,7 @@ import {
 
 type VerificationState = {
   token: string | null;
-  status: "verifying" | "success" | "error";
+  status: "ready" | "verifying" | "success" | "error";
   message: string;
 };
 
@@ -29,16 +28,20 @@ export default function VerifyEmailTokenPage() {
   const token = verificationToken(params.token);
   const [result, setResult] = useState<VerificationState>({
     token,
-    status: "verifying",
+    status: "ready",
     message: "",
   });
   const request = useRef(
     createVerificationRequestCache(AuthService.verifyEmail),
   );
   const resultHeading = useRef<HTMLDivElement>(null);
+  const stopObserving = useRef<(() => void) | null>(null);
+  const submitting = useRef(false);
 
   useEffect(() => {
-    setResult({ token, status: "verifying", message: "" });
+    stopObserving.current?.();
+    submitting.current = false;
+    setResult({ token, status: "ready", message: "" });
     if (!token) {
       setResult({
         token,
@@ -48,9 +51,15 @@ export default function VerifyEmailTokenPage() {
       });
       return;
     }
-    // Reuse this token's settled or in-flight result during Strict Mode replay.
-    // A newer route token makes the previous subscriber inactive.
-    return observeVerificationRequest(
+    return () => stopObserving.current?.();
+  }, [token]);
+
+  function confirmVerification() {
+    if (!token || current.status !== 'ready' || submitting.current) return;
+    submitting.current = true;
+    setResult({ token, status: 'verifying', message: '' });
+    // Loading an email link never consumes it. Only this explicit action submits.
+    stopObserving.current = observeVerificationRequest(
       request.current(token),
       (response) => {
         if (response.error) {
@@ -60,12 +69,6 @@ export default function VerifyEmailTokenPage() {
             message: response.error.message,
           });
         } else {
-          if (response.data?.token && response.data.user) {
-            storeAuthTokens({
-              token: response.data.token,
-              user: response.data.user,
-            });
-          }
           setResult({
             token,
             status: "success",
@@ -83,14 +86,14 @@ export default function VerifyEmailTokenPage() {
         });
       },
     );
-  }, [token]);
+  }
 
   const current =
     result.token === token
       ? result
-      : { token, status: "verifying", message: "" };
+      : { token, status: "ready", message: "" };
   useEffect(() => {
-    if (current.status !== "verifying") resultHeading.current?.focus();
+    if (current.status === 'success' || current.status === 'error') resultHeading.current?.focus();
   }, [current.status, token]);
 
   return (
@@ -110,7 +113,15 @@ export default function VerifyEmailTokenPage() {
       }
       variant="verify"
     >
-      {current.status === "verifying" ? (
+      {current.status === 'ready' ? (
+        <div className="forge-auth-form">
+          <p className="forge-auth-field-help">Select confirm to verify your email address and open your account. Opening this link alone does not verify your email.</p>
+          <Button type="button" className="forge-auth-submit" onClick={confirmVerification}>
+            <CheckCircle2 aria-hidden="true" /> Confirm email address <ArrowRight aria-hidden="true" />
+          </Button>
+          <div className="forge-auth-links"><Link href="/login">Back to sign in</Link></div>
+        </div>
+      ) : current.status === "verifying" ? (
         <AuthLoading message="Checking your verification link…" />
       ) : (
         <div className="forge-auth-form">

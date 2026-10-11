@@ -10,6 +10,7 @@ import {
   requestReturn,
 } from "../controllers/orderController.js";
 import { protect, verifiedEmail } from "../middleware/authMiddleware.js";
+import { userActionLimiter } from "../config/rateLimit.js";
 import { validate } from "../middleware/validate.js";
 import { createOrderSchema } from "../validation/orderSchemas.js";
 
@@ -17,6 +18,7 @@ const router = express.Router();
 
 // All order routes require a logged-in, verified account.
 router.use(protect);
+router.use(userActionLimiter);
 router.use(verifiedEmail);
 
 /**

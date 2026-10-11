@@ -47,7 +47,7 @@ export const optionalAuth = asyncHandler(async (req, res, next) => {
 
   if (
     currentUser.passwordChangedAt &&
-    decoded.iat * 1000 < new Date(currentUser.passwordChangedAt).getTime()
+    decoded.issuedAtMs < new Date(currentUser.passwordChangedAt).getTime()
   ) {
     return next(new AppError("Password recently changed. Login again.", 401));
   }
@@ -101,7 +101,7 @@ export const protect = asyncHandler(async (req, res, next) => {
   // If password changed after token was issued
   if (
     currentUser.passwordChangedAt &&
-    decoded.iat * 1000 < new Date(currentUser.passwordChangedAt).getTime()
+    decoded.issuedAtMs < new Date(currentUser.passwordChangedAt).getTime()
   ) {
     return next(new AppError("Password recently changed. Login again.", 401));
   }

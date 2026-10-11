@@ -25,6 +25,7 @@ if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
 }
 
 let anonClientSingleton = null;
+let serviceClientSingleton = null;
 const verifiedIdentities = new WeakMap();
 
 // Called only after middleware verifies the app JWT and checks the stored user.
@@ -43,13 +44,14 @@ const canUseServiceInRequest = (path = "") =>
   SERVICE_ALLOWED_EXACT.includes(path) ||
   SERVICE_ALLOWED_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
 
-const createRawServiceClient = () =>
-  createClient(supabaseUrl, supabaseServiceKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  });
+const createRawServiceClient = () => {
+  if (!serviceClientSingleton) {
+    serviceClientSingleton = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  }
+  return serviceClientSingleton;
+};
 
 // Custom authentication must read password/token hashes before a caller has a
 // database identity. This server-only capability exposes users CRUD required by
@@ -72,23 +74,26 @@ export const getAuthClient = () => {
 
 export const getServiceClient = () => {
   const client = createRawServiceClient();
-
-  if (process.env.NODE_ENV === "production") {
-    return client;
-  }
-
+  const assertAllowed = () => {
+    if (inRequestContext()) {
+      const requestPath = getRequestPath() || "";
+      if (!canUseServiceInRequest(requestPath)) {
+        throw new Error(
+          `Service-role client used in request context (${getRequestMethod()} ${requestPath}). This bypasses RLS and is forbidden.`
+        );
+      }
+    }
+  };
+  // Enforce the same boundary in every environment, including methods captured
+  // before entering a request context. Background workers run outside requests.
   return new Proxy(client, {
     get(target, prop, receiver) {
-      if (inRequestContext()) {
-        const requestPath = getRequestPath() || "";
-        if (!canUseServiceInRequest(requestPath)) {
-          throw new Error(
-            `Service-role client used in request context (${getRequestMethod()} ${requestPath}). This bypasses RLS and is forbidden.`
-          );
-        }
-      }
-
-      return Reflect.get(target, prop, receiver);
+      assertAllowed();
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === "function" ? (...args) => {
+        assertAllowed();
+        return value.apply(target, args);
+      } : value;
     },
   });
 };

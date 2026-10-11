@@ -196,6 +196,34 @@ export const updateUser = async (id, updates, client) => {
   return mapUserRow(data);
 };
 
+// Compare-and-swap the stored hash in one statement. Concurrent refreshes cannot
+// both consume the same token, and a stale logout cannot revoke a newer login.
+export const rotateRefreshSession = async (id, expectedHash, nextHash, expires, client, passwordChangedAt) => {
+  let query = requireClient(client).from("users")
+    .update({ refresh_token_hash: nextHash, refresh_token_expires: expires, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("refresh_token_hash", expectedHash)
+    .eq("active", true)
+    .gt("refresh_token_expires", new Date().toISOString());
+  // A password change between the initial read and this update must also win
+  // over refresh; otherwise the old session could mint a post-change token.
+  query = passwordChangedAt == null ? query.is("password_changed_at", null) : query.eq("password_changed_at", passwordChangedAt);
+  const { data, error } = await query.select("id").maybeSingle();
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+};
+
+export const revokeRefreshSession = async (id, expectedHash, client) => {
+  const { data, error } = await requireClient(client).from("users")
+    .update({ refresh_token_hash: null, refresh_token_expires: null, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("refresh_token_hash", expectedHash)
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+};
+
 /* ===========================================================
    USER ADDRESSES
 =========================================================== */

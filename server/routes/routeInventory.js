@@ -6,7 +6,7 @@
 export const PUBLIC_ROUTES = [
   { method: "GET", path: "/api/v1/health", owner: "app" },
   { method: "GET", path: "/api/v1/auth/csrf-token", owner: "auth" },
-  { method: "GET", path: "/api/v1/auth/verify-email/:token", owner: "auth" },
+  { method: "POST", path: "/api/v1/auth/verify-email/:token", owner: "auth", note: "Explicit confirmation from email landing page; requires cookie-bound CSRF" },
   { method: "POST", path: "/api/v1/auth/register", owner: "auth" },
   { method: "POST", path: "/api/v1/auth/login", owner: "auth" },
   { method: 'POST', path: '/api/v1/auth/resend-verification', owner: 'auth', note: 'Email/password proof; CSRF; IP + account throttling; sends email only, no session issued' },

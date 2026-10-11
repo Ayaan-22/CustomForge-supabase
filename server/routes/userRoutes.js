@@ -6,6 +6,7 @@ import express from "express";
 import { deprecatedRoute } from "../middleware/deprecatedRoute.js";
 import { validate } from "../middleware/validate.js";
 import { addressSchema, updateAddressSchema } from "../validation/addressSchemas.js";
+import { userActionLimiter } from "../config/rateLimit.js";
 import {
   getMe,
   updateMe,
@@ -39,12 +40,13 @@ const router = express.Router();
 /* ============================
    SESSION (public — no login required)
    ============================ */
-router.get("/me", optionalAuth, getMe);
+router.get("/me", optionalAuth, userActionLimiter, getMe);
 
 /* ============================
    ALL ROUTES BELOW REQUIRE LOGIN + VERIFIED EMAIL
    ============================ */
 router.use(protect);
+router.use(userActionLimiter);
 router.use(verifiedEmail);
 
 /* ============================

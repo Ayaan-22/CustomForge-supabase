@@ -94,7 +94,7 @@ function HistoryCard({ order }: { order: Order }) {
         )}
       </div>
       <div className="forge-order-payment-status">
-        {order.isPaid ? (
+        {order.status === 'payment_review' ? 'Payment received · needs review' : order.isPaid ? (
           <>
             <CheckCircle2 size={15} /> Payment received
           </>

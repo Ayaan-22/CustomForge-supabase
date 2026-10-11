@@ -58,6 +58,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 /scratch/
 /docs/reports/
 /CLAUDE_AUDIT.md
+/CLAUDE_AUDIT(1).md
 *.report.html
 *.report.json
 

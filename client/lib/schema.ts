@@ -8,6 +8,7 @@ export const ROLES = ["user", "admin"] as const;
 export const ORDER_STATUSES = [
   "pending",
   "paid",
+  "payment_review",
   "shipped",
   "delivered",
   "cancelled",
@@ -233,6 +234,7 @@ export const OrderSchema = z.object({
   shippingAddress: z.record(z.unknown()),
   paymentMethod: z.string(),
   paymentResult: z.record(z.unknown()).optional(),
+  paymentExpiresAt: z.string().datetime().optional(),
   itemsPrice: z.number().min(0),
   discountAmount: z.number().min(0).default(0),
   shippingPrice: z.number().min(0),

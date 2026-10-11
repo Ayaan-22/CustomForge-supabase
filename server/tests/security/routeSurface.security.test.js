@@ -2,7 +2,7 @@ import {listenForFetch} from "../helpers/listenForFetch.js";
 import http from "node:http";
 import express from "express";
 import Stripe from "stripe";
-import speakeasy from "speakeasy";
+import * as OTPAuth from "otpauth";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 // Real Express, JWT, role/email/2FA, CSRF, validation and rate limiting.
@@ -82,7 +82,7 @@ const request = (route, { user, origin = base, body = validBody, withCsrf = true
   return fetch(`${origin}${concrete(route.path)}`, {
     method: route.method,
     headers: {
-      ...(user ? { Authorization: `Bearer ${signToken(user)}` } : {}),
+      ...(user ? { Authorization: `Bearer ${signToken(user, 'user', '15m')}` } : {}),
       ...(!safe ? { "Content-Type": "application/json" } : {}),
       ...(withCsrf ? { Cookie: `anon_session=route-tests; csrf_token=${csrf}`, "X-CSRF-Token": csrf } : {}),
       ...headers,
@@ -116,6 +116,16 @@ afterAll(async () => {
 });
 
 describe("complete exposure inventory", () => {
+  it('does not consume email verification links on GET and requires CSRF confirmation on POST', async () => {
+    const path = `/api/v1/auth/verify-email/${id}`;
+    const opened = await request({method:'GET',path},{withCsrf:false});
+    expect([401,404]).toContain(opened.status);
+    expect(opened.headers.get('set-cookie')).toBeNull();
+    expect((await request({method:'POST',path},{withCsrf:false})).status).toBe(403);
+    const confirmed = await request({method:'POST',path});
+    expect(confirmed.status).toBe(200);
+    expect(await confirmed.json()).toMatchObject({handler:'verifyEmail'});
+  });
   it("exactly matches every router and application endpoint, including admin and dev", () => {
     const mounted = Object.entries(routers).flatMap(([name, router]) =>
       listRouterRoutes(router).map((route) => ({ ...route, path: joinMount(ROUTE_MOUNTS[name], route.path) })));
@@ -183,7 +193,7 @@ describe("authentication intent through HTTP with valid CSRF", () => {
     const route = { method: "GET", path: "/api/v1/admin/users" };
     expect((await request(route, { user: "twofactor" })).status).toBe(401);
     expect((await request(route, { user: "missingsecret" })).status).toBe(403);
-    const token = speakeasy.totp({ secret: fixtures.users.twofactor.twoFactorSecret, encoding: "base32" });
+    const token = new OTPAuth.TOTP({ secret: OTPAuth.Secret.fromBase32(fixtures.users.twofactor.twoFactorSecret), algorithm: 'SHA1', digits: 6, period: 30 }).generate();
     expect((await request(route, { user: "twofactor", headers: { "X-2FA-Token": token } })).status).toBe(200);
     // Existing frontend disable flow sends { password, token } in the JSON body.
     expect((await request({ method: "DELETE", path: "/api/v1/auth/2fa/disable" },
@@ -314,7 +324,7 @@ describe("abuse controls and webhook isolation", () => {
   it.each([
     ["POST", "/api/v1/auth/register"], ["POST", "/api/v1/auth/login"],
     ["POST", "/api/v1/auth/forgot-password"], ["POST", `/api/v1/auth/reset-password/${id}`],
-    ["POST", "/api/v1/auth/send-verification-email"], ["GET", `/api/v1/auth/verify-email/${id}`],
+    ["POST", "/api/v1/auth/send-verification-email"], ["POST", `/api/v1/auth/verify-email/${id}`],
     ['POST', '/api/v1/auth/resend-verification'],
     ["POST", "/api/v1/auth/refresh"], ["POST", "/api/v1/auth/2fa/verify"],
     ["PATCH", "/api/v1/auth/update-password"], ["PATCH", "/api/v1/users/change-password"],

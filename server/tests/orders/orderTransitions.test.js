@@ -8,8 +8,8 @@ vi.mock('../../config/db.js',()=>{
       single:async()=>({data:writing?{...state.order,...state.updates.at(-1)}:state.order,error:null}),maybeSingle:async()=>({data:state.order,error:null})};return q;
   }};return {getServiceClient:()=>db,getSupabaseClient:()=>db};
 });
-import {updateOrderStatus,updateOrderToDelivered,markOrderAsPaid,processReturn} from '../../controllers/adminController.js';
-import {cancelOrder} from '../../controllers/orderController.js';
+import {updateOrderStatus,updateOrderToDelivered,markOrderAsPaid,processReturn,approveReturn} from '../../controllers/adminController.js';
+import {cancelOrder,requestReturn} from '../../controllers/orderController.js';
 const id='10000000-0000-4000-8000-000000000001';
 const run=(handler,body={})=>new Promise((resolve,reject)=>handler({user:{id:'owner',role:'admin'},params:{id},query:{},body},{json:resolve,status(){return this}},reject));
 beforeEach(()=>{state.order={id,status:'pending',payment_method:'stripe',is_paid:false,updated_at:'2026-10-04T00:00:00Z',return_status:'none'};state.filters=[];state.updates=[];state.rpc.mockReset()});
@@ -26,4 +26,21 @@ describe('order and payment state transitions',()=>{
   it('cannot approve a return that was not requested',async()=>{await expect(run(processReturn,{returnStatus:'approved'})).rejects.toMatchObject({statusCode:409})});
   it('cancels only through the atomic owner RPC',async()=>{state.rpc.mockResolvedValue({data:{id,status:'cancelled'}});await run(cancelOrder);expect(state.rpc).toHaveBeenCalledWith('cancel_unpaid_order',{p_order_id:id});expect(state.updates).toHaveLength(0)});
   it('does not report cancellation when the migration is unavailable',async()=>{state.rpc.mockResolvedValue({error:{code:'PGRST202'}});await expect(run(cancelOrder)).rejects.toMatchObject({statusCode:503})});
+  it.each([
+    [updateOrderStatus,{status:'processing'},'paid',true],
+    [updateOrderToDelivered,{},'shipped',true],
+    [markOrderAsPaid,{},'shipped',false],
+    [processReturn,{returnStatus:'approved'},'delivered',true],
+    [approveReturn,{},'delivered',true],
+    [requestReturn,{},'delivered',true],
+  ])('blocks %s when captured payment has no reserved inventory',async(handler,body,status,isPaid)=>{
+    Object.assign(state.order,{status,is_paid:isPaid,payment_method:handler===markOrderAsPaid?'cod':'stripe',
+      user_id:'owner',is_delivered:true,delivered_at:new Date().toISOString(),return_status:handler===requestReturn?'none':'requested',
+      inventory_released_at:'2026-10-07T00:00:00Z'});
+    await expect(run(handler,body)).rejects.toMatchObject({statusCode:409});expect(state.updates).toHaveLength(0);
+  });
+  it('blocks customer returns even if stale delivery metadata exists on a payment-review order',async()=>{
+    Object.assign(state.order,{status:'payment_review',user_id:'owner',is_paid:true,is_delivered:true,delivered_at:new Date().toISOString()});
+    await expect(run(requestReturn)).rejects.toMatchObject({statusCode:409});expect(state.updates).toHaveLength(0);
+  });
 });

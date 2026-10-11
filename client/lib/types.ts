@@ -108,6 +108,7 @@ export type OrderStatus =
   | "refunded"
   | "pending"
   | "paid"
+  | "payment_review"
   | "shipped"
   | "delivered"
   | "cancelled"
@@ -116,6 +117,7 @@ export type OrderStatus =
 export interface Order {
   isPaid: boolean;
   paymentMethod?: "stripe" | "paypal" | "cod";
+  paymentResult?: { reconciliationRequired?: boolean; [key: string]: unknown };
   returnStatus?: string;
   id: string;
   userId: string;
@@ -128,6 +130,7 @@ export interface Order {
   tax?: number;
   total?: number;
   paymentIntentId?: string;
+  paymentExpiresAt?: string;
   createdAt?: string;
   updatedAt?: string;
 }

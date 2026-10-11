@@ -4,7 +4,6 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
-import xss from "xss-clean";
 import hpp from "hpp";
 import compression from "compression";
 import path from "path";
@@ -21,13 +20,12 @@ import {
 import {
   apiLimiter,
   authLimiter,
-  paymentLimiter,
   publicLimiter,
-  userActionLimiter,
   sensitiveAuthLimiter,
-  adminLimiter,
   webhookLimiter,
+  apiIpLimiter,
 } from "./config/rateLimit.js";
+import { getTrustProxy, validateSecurityConfiguration } from "./config/security.js";
 
 import productRoutes from "./routes/productRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
@@ -45,23 +43,21 @@ import { requestContextMiddleware } from "./utils/requestContext.js";
 import { errorHandler } from "./middleware/errorMiddleware.js";
 
 dotenv.config({ path: "./config/config.env" });
-if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0") {
-  throw new Error("TLS certificate verification must be enabled. Remove NODE_TLS_REJECT_UNAUTHORIZED=0 from the server environment.");
-}
+validateSecurityConfiguration();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export function createApp() {
   const app = express();
-  app.set("trust proxy", 1);
+  app.set("trust proxy", getTrustProxy());
 
   app.use(
     helmet({
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'", process.env.CLIENT_URL],
+          scriptSrc: ["'none'"],
           styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
           imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],
           connectSrc: ["'self'", process.env.CLIENT_URL],
@@ -147,12 +143,9 @@ export function createApp() {
   app.use("/api/v1/auth/2fa", sensitiveAuthLimiter);
   app.use("/api/v1/auth/update-password", sensitiveAuthLimiter);
   app.use("/api/v1/users/change-password", sensitiveAuthLimiter);
-  app.use("/api/v1/payment", paymentLimiter);
-  app.use("/api/v1/orders", userActionLimiter);
-  app.use("/api/v1/cart", userActionLimiter);
-  app.use("/api/v1/users", userActionLimiter);
-  app.use("/api/v1/reviews", userActionLimiter);
-  app.use("/api/v1/admin", adminLimiter);
+  // Pre-authentication IP throttling bounds malformed/anonymous traffic. Account
+  // limits are mounted after verified identity inside the protected routers.
+  app.use("/api", apiIpLimiter);
 
   app.use("/api", (req, res, next) => {
     const specializedRoutes = [
@@ -175,7 +168,6 @@ export function createApp() {
   app.use(express.json({ limit: "10kb" }));
   app.use(express.urlencoded({ extended: true, limit: "10kb" }));
   app.use(cookieParser());
-  app.use(xss());
   app.use(hpp({ whitelist: ["price", "ratings", "duration"] }));
   app.use(csrfProtection);
 

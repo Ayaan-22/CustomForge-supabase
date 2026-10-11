@@ -6,6 +6,7 @@ import { getSupabaseClient } from "../config/db.js";
 import Email from "../utils/email.js";
 
 import { mapOrderToFrontend } from "../utils/orderTransform.js";
+import { ensureOrderPaymentReconciled } from '../utils/paymentLifecycle.js';
 
 const ORDER_CONFIG = { RETURN_WINDOW_DAYS: 30 };
 const isValidUUID = (value) =>
@@ -47,14 +48,8 @@ export const createOrder = asyncHandler(async (req, res, next) => {
   }
   if (!data?.order?.id) return next(new AppError("Failed to create order", 500));
   const { order, reused } = data;
-  // A replay must not resend email. The transaction has committed before this runs.
-  if (!reused) setImmediate(async () => {
-    try {
-      await new Email(req.user, `${process.env.CLIENT_URL || process.env.FRONTEND_URL}/orders/${order.id}`).sendOrderConfirmation(order);
-    } catch (err) {
-      logger.error("Order confirmation email failed", { orderId: order.id, error: err.message });
-    }
-  });
+  // The database insert trigger queues confirmation in the checkout transaction.
+  // Replays do not insert another order and therefore cannot enqueue duplicate mail.
   res.status(reused ? 200 : 201).json({
     success: true,
     ...(reused ? { idempotent: true } : {}),
@@ -187,6 +182,7 @@ export const getMyOrders = asyncHandler(async (req, res, next) => {
       status,
       is_paid,
       payment_method,
+      payment_expires_at,
       is_delivered,
       total_price,
       coupon_applied,
@@ -282,7 +278,7 @@ export const getPaymentStatus = asyncHandler(async (req, res, next) => {
 
   let paymentStatusQuery = supabase
     .from("orders")
-    .select("id, user_id, is_paid, status, paid_at")
+    .select("id, user_id, is_paid, status, paid_at, payment_expires_at")
     .eq("id", orderId);
 
   if (req.user.role !== "admin") {
@@ -307,6 +303,7 @@ export const getPaymentStatus = asyncHandler(async (req, res, next) => {
       isPaid: order.is_paid,
       status: order.status,
       paidAt: order.paid_at,
+      paymentExpiresAt: order.payment_expires_at,
     },
   });
 });
@@ -355,6 +352,7 @@ export const requestReturn = asyncHandler(async (req, res, next) => {
 
   validateOrderOwnership(order, req.user.id, req.user.role);
 
+  ensureOrderPaymentReconciled(order);
   if (!order.is_delivered) {
     throw new AppError("Cannot request return for undelivered order", 400);
   }

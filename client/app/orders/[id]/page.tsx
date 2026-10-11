@@ -36,10 +36,12 @@ import {
 import {
   hasInvoicePricing,
   orderActionEligibility,
+  orderNeedsPaymentReview,
   recordedLineTotal,
   recordedOrderAmount,
   recordedOrderDate,
 } from "@/lib/order-detail";
+import { ORDER_STATUS_LABELS } from '@/lib/order-history';
 
 const amount = (value: unknown) =>
   recordedOrderAmount(value) ? formatPrice(value) : "Not recorded";
@@ -73,7 +75,8 @@ export default function OrderDetailsPage() {
       !state.state.data?.data?.isPaid &&
       state.state.dataUpdateCount < 12
         ? 5000
-        : false,
+        : state.state.data?.data?.paymentMethod === 'stripe' && state.state.data.data.isPaid === false &&
+          ['pending','processing'].includes(state.state.data.data.status) ? 30_000 : false,
   });
   const order = query.data?.data;
 
@@ -196,8 +199,9 @@ export default function OrderDetailsPage() {
     createdAt: placedDate ? order.createdAt : undefined,
   };
   const exportReady = hasInvoicePricing(order);
-  const stopped = ["cancelled", "returned", "refunded"].includes(order.status);
-  const paymentLabel = order.isPaid
+  const paymentReview = orderNeedsPaymentReview(order);
+  const stopped = paymentReview || ["cancelled", "returned", "refunded"].includes(order.status);
+  const paymentLabel = paymentReview ? 'Payment received · needs review' : order.isPaid
     ? "Payment confirmed"
     : order.paymentMethod === "cod"
       ? "Due on delivery"
@@ -216,6 +220,9 @@ export default function OrderDetailsPage() {
         Back to your orders
       </Link>
       {showSuccessBanner && !stopped && <OrderCelebration order={order} />}
+      {paymentReview && <div className="forge-order-detail-notice" role="status">
+        <AlertCircle size={18} /><div><strong>Payment needs review</strong><p>Your payment was received after the item reservation ended. Fulfillment is paused while the store reviews it. Do not pay again; contact store support with your order number.</p></div>
+      </div>}
       {searchParams.get("canceled") === "true" && !order.isPaid && (
         <div className="forge-order-detail-notice" role="status">
           <ShieldCheck size={18} />
@@ -269,7 +276,7 @@ export default function OrderDetailsPage() {
         <div className={`forge-order-detail-status is-${order.status}`}>
           <span />
           <strong>
-            {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+            {ORDER_STATUS_LABELS[order.status] || order.status}
           </strong>
         </div>
       </header>

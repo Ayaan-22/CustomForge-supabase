@@ -57,15 +57,16 @@ export const AuthService = {
     });
   },
 
-  logout(): Promise<ApiResponse<{ message: string }>> {
-    return apiFetch("/auth/logout", { method: "POST" });
+  async logout(): Promise<ApiResponse<{ message: string }>> {
+    const response = await apiFetch<{ message: string }>("/auth/logout", { method: "POST" });
+    return response;
   },
 
   verifyEmail(
     token: string
   ): Promise<ApiResponse<{ message?: string; token?: string; user?: User }>> {
     return apiFetch(`/auth/verify-email/${encodeURIComponent(token)}`, {
-      method: "GET",
+      method: "POST",
       skipAuth: true,
       skipRefresh: true,
     });

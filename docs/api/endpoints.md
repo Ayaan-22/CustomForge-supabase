@@ -12,8 +12,9 @@ Base URL: `/api/v1/auth`
 | :--- | :--- | :--- |
 | `POST` | `/register` | Register a new user |
 | `POST` | `/login` | Login and receive JWT + Cookie |
-| `POST` | `/logout` | Clear session cookies |
-| `POST` | `/refresh` | Renew expired access tokens |
+| `POST` | `/logout` | Await conditional refresh-session revocation, then clear cookies; changed binding returns 409 and database failure returns 503, preserving cookies for retry |
+| `POST` | `/refresh` | Atomically exchange a purpose-bound refresh JWT for a new token pair |
+| `POST` | `/verify-email/:token` | Consume verification link after explicit confirmation; CSRF required |
 | `POST` | `/forgot-password` | Send password reset email |
 | `POST` | `/reset-password/:token` | Reset password with token |
 | `PATCH` | `/update-password` | Update password (authenticated) |

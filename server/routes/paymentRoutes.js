@@ -12,11 +12,13 @@ import {
   capturePayPalOrder,
 } from "../controllers/paymentController.js";
 import { protect, verifiedEmail } from "../middleware/authMiddleware.js";
+import { paymentLimiter } from "../config/rateLimit.js";
 
 const router = express.Router();
 
 // Authenticated payment APIs (Stripe webhook is mounted on app.js, not this router).
 router.use(protect);
+router.use(paymentLimiter);
 router.use(verifiedEmail);
 
 /**

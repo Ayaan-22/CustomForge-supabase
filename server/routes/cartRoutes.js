@@ -11,11 +11,13 @@ import {
   removeCoupon,
 } from "../controllers/cartController.js";
 import { protect, verifiedEmail } from "../middleware/authMiddleware.js";
+import { userActionLimiter } from "../config/rateLimit.js";
 
 const router = express.Router();
 
 // All cart routes require a logged-in, verified account (login already gates verification).
 router.use(protect);
+router.use(userActionLimiter);
 router.use(verifiedEmail);
 
 /**

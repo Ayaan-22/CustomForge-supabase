@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest";
 import { canApproveReturn, canRecordCashPayment, isLowStock, nextFulfillmentStatus } from "@/lib/commerce-policy";
 
 describe("fulfillment controls follow existing payment and status rules", () => {
+  it('blocks fulfillment, returns, and manual payment for orders awaiting payment reconciliation', () => {
+    const order={status:'payment_review',is_paid:true,payment_method:'stripe',return_status:'requested'};
+    expect(nextFulfillmentStatus(order)).toBeNull();
+    expect(canApproveReturn(order)).toBe(false);
+    expect(canRecordCashPayment(order)).toBe(false);
+    expect(nextFulfillmentStatus({...order,status:'paid',payment_result:{reconciliationRequired:true}})).toBeNull();
+  });
   it("offers processing for a paid checkout", () => {
     expect(nextFulfillmentStatus({status:"paid",is_paid:true,payment_method:"stripe"})).toBe("processing");
   });

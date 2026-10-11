@@ -2,7 +2,7 @@
 
 CustomForge is a hardware and gaming commerce application with a customer storefront, an admin dashboard, and an Express API backed by Supabase PostgreSQL.
 
-CustomForge is a personal project in active development. The repository contains three independent npm packages; run commands for the package you intend to use. This guide documents setup and maintained commands as of **2026-10-06**.
+CustomForge is a personal project in active development. The repository contains three independent npm packages; run commands for the package you intend to use. This guide documents setup and maintained commands as of **2026-10-08**.
 
 The implemented payment and account flows still need validation against your deployment configuration before public use. Run the maintained tests and check migrations, hosted permissions, email delivery and signed payment webhooks. Current unsupported features are described below; no historical QA score or report is treated as a deployment guarantee.
 
@@ -36,7 +36,7 @@ The implemented payment and account flows still need validation against your dep
 
 The storefront includes product browsing, search and filtering, comparison, PC builder guidance, wishlist, cart, addresses, checkout, order history, and account security. The admin application includes product, user, order, coupon, and review management, logs, and sales/inventory analytics.
 
-Authentication is implemented by Express against `public.users`, using application JWTs, rotating refresh tokens, email verification, and TOTP two-factor authentication. Accounts created through Supabase Auth are not automatically CustomForge accounts. Browser access tokens stay in memory; refresh tokens use HttpOnly cookies. Mutating API requests use CSRF protection.
+Authentication is implemented by Express against `public.users`, using distinct access/refresh JWTs, atomic refresh rotation, explicit email confirmation, and OTPAuth TOTP. Accounts created through Supabase Auth are not automatically CustomForge accounts. Browser access tokens stay in memory; refresh tokens use HttpOnly cookies. Mutating API requests use CSRF protection. Sessions issued before token-purpose separation require a new sign-in.
 
 Checkout uses PostgreSQL RPCs to calculate authoritative totals, lock inventory, and create orders atomically. Implemented payment paths are cash on delivery (COD) and Stripe hosted Checkout. PayPal, saved-card enrollment/change, and the admin refund operation currently return unavailable responses. Customer cancellation is limited to eligible **pending, unpaid COD** orders. Card-order cancellation and a complete returns/refund workflow remain outstanding. PayPal, saved-card setup and admin refunds are unavailable; do not expose them as completed features.
 
@@ -159,6 +159,10 @@ JWT_EXPIRES_IN=30d
 JWT_REFRESH_EXPIRES_IN=30d
 JWT_REFRESH_COOKIE_EXPIRES_IN=30
 CSRF_SECRET=REPLACE_WITH_A_DIFFERENT_RANDOM_SECRET
+TRUST_PROXY=1
+
+# Optional: required before running multiple API processes/replicas
+# REDIS_URL=redis://127.0.0.1:6379
 
 STRIPE_SECRET_KEY=sk_test_REPLACE_WITH_YOUR_TEST_KEY
 STRIPE_WEBHOOK_SECRET=whsec_REPLACE_WITH_LISTENER_OR_ENDPOINT_SECRET
@@ -195,9 +199,11 @@ Run it separately for `JWT_SECRET` and `CSRF_SECRET`. **Do not generate `SUPABAS
 | `SUPABASE_JWT_SECRET` | Required for authenticated database access. The current adapter signs short-lived **HS256** database JWTs with `role=authenticated` and the verified application user ID. |
 | `JWT_SECRET` | Required for application JWT signing and verification. Separate from the Supabase signing secret. |
 | `JWT_SHORT_EXPIRES_IN` | Access-token lifetime; default `15m`. |
-| `JWT_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN` | General/default and refresh-token lifetimes; default `30d`. |
-| `JWT_REFRESH_COOKIE_EXPIRES_IN` | Refresh-cookie lifetime in days; default `30`. |
-| `CSRF_SECRET` | Set an independent secret. The source otherwise falls back to the application JWT secret. |
+| `JWT_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN` | Refresh-token lifetime; `JWT_REFRESH_EXPIRES_IN` takes precedence, with a `30d` fallback. Token helpers require explicit expiry. |
+| `JWT_REFRESH_COOKIE_EXPIRES_IN` | Refresh-cookie lifetime in days from issuance; default `30`, capped by the refresh JWT expiry. |
+| `CSRF_SECRET` | Required and distinct from `JWT_SECRET` in production. Development permits the JWT-secret fallback. |
+| `TRUST_PROXY` | Trusted hop count or comma-separated trusted proxy addresses/subnets; default `1`. Set to the actual hosting topology; `true` is rejected. |
+| `REDIS_URL` | Optional shared rate-limit store. Required for multiple API processes/replicas; omit for local single-process memory limits. Configured Redis connection failure stops startup, and outages return retryable 503 errors rather than bypassing limits. |
 | `CLIENT_URL`, `ADMIN_URL` | Exact frontend origins, without route paths. Used for allowed origins; `CLIENT_URL` also controls customer email/payment links. Update these if ports or hostnames change. |
 | `STRIPE_SECRET_KEY` | Needed for API startup; use a test key locally and a live key only for a configured production deployment. |
 | `STRIPE_WEBHOOK_SECRET` | Required to verify delivered Stripe webhook signatures. A CLI listener secret differs from a registered endpoint secret. |
@@ -222,7 +228,7 @@ Create the same server-only setting in both files:
 API_BACKEND_URL=http://localhost:5000
 ```
 
-Next.js forwards `/api/v1/*` requests to Express through its configured rewrites. The storefront browser transport always uses its own origin. For the admin dashboard, leave **`NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_API_URL` unset** to use its same-origin rewrite; those legacy public variables still override the admin transport if supplied.
+Next.js forwards `/api/v1/*` requests to Express through its configured rewrites. Both browser transports use their own origin. Legacy `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_API_URL` do not override the admin transport.
 
 Keep Supabase service keys, signing secrets, Stripe secret keys, SMTP passwords, and Cloudinary secrets out of both frontend environments and all `NEXT_PUBLIC_*` variables. The current hosted Stripe Checkout flow does not require a frontend Stripe publishable key.
 
@@ -243,10 +249,15 @@ For a fresh database, execute these files in order, waiting for each to succeed:
 | 5 | [20261003_atomic_checkout.sql](server/models/migrations/20261003_atomic_checkout.sql) | Atomic, owner-scoped cart checkout with authoritative totals, inventory locking, and retry handling. |
 | 6 | [20261004_admin_analytics.sql](server/models/migrations/20261004_admin_analytics.sql) | Admin analytics RPC and supporting indexes. |
 | 7 | [20261004_cancel_unpaid_order.sql](server/models/migrations/20261004_cancel_unpaid_order.sql) | Eligible unpaid COD cancellation with inventory restoration. |
+| 8 | [20261008_stripe_reservation_recovery.sql](server/models/migrations/20261008_stripe_reservation_recovery.sql) | Durable Stripe attempts, expired reservation release and atomic settlement/reconciliation. |
+| 9 | [20261008_order_email_outbox.sql](server/models/migrations/20261008_order_email_outbox.sql) | Transactional confirmation-email outbox, worker leases and durable retries. |
+| 10 | [20261009_stripe_payment_deadline.sql](server/models/migrations/20261009_stripe_payment_deadline.sql) | Fixed two-hour Stripe order deadlines, deadline-fenced checkout and safe legacy recovery. |
 
 For an existing project, inspect which schema changes have already been applied and apply the missing migrations in sequence. Back up the target database before changing an existing deployment. Do not rerun the older hardening migration after the public-storefront migration: later migrations establish the current access policy. Do not use `admin/scripts/schema.sql` as the setup authority; it is a stale alternate schema.
 
 Use the canonical migrations and maintained SQL/RLS tests to review database permissions. Empty product tables are valid; add your own catalog through the admin interface or use the optional demo seed below.
+
+Apply the October 8 migrations and the October 9 payment-deadline migration before starting the updated API. Startup checks both queue tables and orders.payment_expires_at before accepting traffic. Confirmation jobs are created only for new orders after the outbox migration; existing orders are not emailed again automatically. Workers run inside each API process and coordinate through database locks/leases. SMTP delivery is at least once: a crash after acceptance but before acknowledgement can produce a duplicate email with the same Message-ID.
 
 The schema does not create a default administrator or import demo products automatically. Use the account and optional demo-catalog workflows below.
 
@@ -343,11 +354,13 @@ stripe login
 stripe listen --forward-to localhost:5000/api/v1/payment/webhook
 ```
 
-Copy the listener's `whsec_...` value into `STRIPE_WEBHOOK_SECRET`, then restart the backend. Keep the listener running while testing Checkout. For a deployment, register the public HTTPS API endpoint `/api/v1/payment/webhook` and use that endpoint's signing secret instead. The application handles `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, and `charge.refunded` events. See [Stripe webhook guidance](https://docs.stripe.com/webhooks).
+Copy the listener's `whsec_...` value into `STRIPE_WEBHOOK_SECRET`, then restart the backend. Keep the listener running while testing Checkout. For a deployment, register the public HTTPS API endpoint `/api/v1/payment/webhook` and use that endpoint's signing secret instead. The application handles `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, `checkout.session.expired`, and `charge.refunded` events. See [Stripe webhook guidance](https://docs.stripe.com/webhooks).
 
 Use `NODE_ENV=development` for local CLI forwarding. The production webhook handler additionally checks the sender IP against its Stripe allowlist; a loopback CLI delivery will be rejected. Production verification must use the deployed endpoint with correctly configured proxy headers and the actual Stripe delivery source.
 
 A complete application test uses a verified customer, shipping address, nonempty cart, and sufficient stock. Create an order through the storefront, choose the implemented Stripe path, finish hosted Checkout using Stripe test-mode payment details, then confirm the order state after the signed webhook arrives. Browser success redirects alone do not prove settlement. Checkout also depends on the matching `CLIENT_URL`, the atomic-checkout migration, and authenticated database JWT configuration.
+
+New Stripe orders have a fixed two-hour payment deadline from order creation, returned as paymentExpiresAt and shown in the storefront. Reopening/retrying payment never extends it. One provider Checkout Session expires at that deadline. A new session must start with at least 31 minutes remaining to satisfy Stripe's 30-minute minimum with a network allowance; an existing open session can be resumed until expiry. The API recovery worker runs at startup and every minute, expires abandoned open sessions, and marks confirmed unpaid orders cancelled while restoring inventory, sales counts and coupon usage exactly once. Unbound create responses retain a five-minute reconciliation grace. Processing payments and provider outages stay reserved until their outcome can be verified. Legacy orders missing customer IDs use a bounded, fully paginated account-wide Stripe session scan; verified matches recover their identity, confirmed absence permits cancellation, and incomplete/ambiguous scans require reconciliation. Existing non-legacy attempts keep their earlier expiry so their original provider parameters are not changed. A payment captured after inventory release is recorded as payment_review and cannot be fulfilled automatically.
 
 ## Tests and code checks
 
@@ -520,7 +533,7 @@ Deployment requirements:
 - Serve the customer and admin sites over HTTPS. Production refresh cookies are `Secure`, HttpOnly, and `SameSite=Strict`; keep browser API traffic on each frontend's own origin through the rewrite.
 - Set exact frontend origins. Development permits local origins more broadly; production does not. Frontend `NEXT_PUBLIC_*` values, if used, are build-time browser configuration and need a rebuild to change.
 - Expose the signed Stripe webhook through HTTPS without modifying its raw body. Verify delivery against a real application test order in the intended environment.
-- The API currently trusts one proxy hop. Match that assumption to the hosting topology and preserve forwarded headers correctly.
+- Configure `TRUST_PROXY` for the hosting topology and preserve forwarded headers correctly; the default trusts one hop. Configure `REDIS_URL` before scaling beyond one API process.
 - Retain/monitor logs and backups appropriately. The filesystem destinations are ignored by Git, but production storage and retention are deployment responsibilities.
 - Verify the target schema, authenticated customer/admin flows, signed payment webhooks and order consistency in the deployment environment. Do not present unavailable payment/refund functions as supported features.
 
@@ -604,7 +617,9 @@ npm --prefix admin run
 | Both Next apps want port 3000 | Pass `-- --port 3001` to the admin command explicitly. |
 | Production start cannot find a build | Run that package's build first; for a storefront preview, use the same `FORGE_PREVIEW` setting for build and start. |
 | Login/refresh or other writes return `CSRF_INVALID` | Keep the CSRF token and bound cookies together; use the same hostname and current token after session rotation. For a manual API client, retain its web session. |
-| Admin calls bypass the rewrite unexpectedly | Unset `NEXT_PUBLIC_API_BASE_URL`/`NEXT_PUBLIC_API_URL` and rebuild; admin still reads these legacy variables. |
+| API startup requires recovery/outbox/deadline schema | Apply the October 8 and October 9 migrations to the intended database and verify PostgREST schema visibility before restarting. |
+| Login/refresh rejects an old session after this update | Sign in again; untyped legacy JWTs are intentionally rejected. |
+| Redis prevents startup or requests return rate-limit 503 | Restore store availability and restart the API after a connection deadline closes the client. Correct `REDIS_URL`, or omit it for a single local API process. Do not fall back to memory across replicas. |
 | Production browser origin is rejected | Match `CLIENT_URL`/`ADMIN_URL` to the exact scheme, host, and port; restart the API after changing them. |
 | No verification/reset email arrives | Check SMTP credentials, sender, TLS port, inbox, and server logs. Development log-only email does not send a message. Use the recovery/resend UI after correcting configuration. |
 | Stripe startup or webhook signature fails | Supply the correct Stripe key and listener/endpoint signing secret; restart Express and keep the raw webhook body intact. |

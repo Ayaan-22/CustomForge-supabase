@@ -1,7 +1,8 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
-  token: "access-old",
+  token: "access-old" as string | null,
+  get accessToken() { return this.token; },
   clearAuth: vi.fn(),
   setAuth: vi.fn(),
   user: { id: "user-1" },
@@ -17,9 +18,12 @@ beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
   state.token = "access-old";
-  state.setAuth.mockImplementation((token: string) => {
+  state.user = { id: "user-1" };
+  state.setAuth.mockImplementation((token: string, user: { id: string }) => {
     state.token = token;
+    state.user = user;
   });
+  state.clearAuth.mockImplementation(() => { state.token = null; });
   ({ apiFetch } = await import("@/lib/apiClient"));
 });
 afterEach(() => {
@@ -174,6 +178,33 @@ describe("same-origin storefront transport", () => {
 });
 
 describe("session rotation and CSRF", () => {
+  it.each([409,503])('preserves the session when logout fails with %s',async status=>{
+    vi.stubGlobal('fetch',vi.fn(async(url:string)=>url.endsWith('/csrf-token')?json({data:{csrfToken:'current'}}):json({message:'Logout not completed'},status)));
+    const result=await apiFetch('/auth/logout',{method:'POST'});
+    expect(result.status).toBe(status);
+    expect(state.token).toBe('access-old');
+    expect(state.clearAuth).not.toHaveBeenCalled();
+  });
+  it('keeps a newer login when an older refresh rejects after logout',async()=>{
+    vi.stubGlobal('navigator',{});
+    let started!:()=>void, finish!:(response:Response)=>void;
+    const pending=new Promise<void>(resolve=>{started=resolve;});
+    vi.stubGlobal('fetch',vi.fn(async(url:string)=>{
+      if(url.endsWith('/csrf-token'))return json({data:{csrfToken:'current'}});
+      if(url.endsWith('/refresh')){started();return new Promise<Response>(resolve=>{finish=resolve;});}
+      return json({token:'newer-login',data:{user:{id:'new-user'}}});
+    }));
+    const {restoreSession,endSession}=await import('@/lib/apiClient');
+    const restoring=restoreSession();
+    await pending;
+    endSession();
+    await apiFetch('/auth/login',{method:'POST',skipAuth:true,skipRefresh:true});
+    state.clearAuth.mockClear();
+    finish(json({message:'Session ended'},401));
+    expect(await restoring).toBeNull();
+    expect(state.token).toBe('newer-login');
+    expect(state.clearAuth).not.toHaveBeenCalled();
+  });
   it("uses fresh CSRF after silent refresh and email verification, including login with skipAuth", async () => {
     let binding = "session-1";
     let csrfGets = 0;

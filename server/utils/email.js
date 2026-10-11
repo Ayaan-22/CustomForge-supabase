@@ -5,6 +5,7 @@ import pug from "pug";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import net from "node:net";
 import AppError from "./appError.js";
 import { logger } from "../middleware/logger.js";
 import { emailPlainText, orderEmailData, safeEmailUrl } from "./emailData.js";
@@ -22,6 +23,8 @@ export default class Email {
       address: addressparser(process.env.EMAIL_FROM || process.env.EMAIL_USERNAME || '')[0]?.address,
     };
     this.data = data;
+    this.messageId = data.messageId;
+    this.signal = data.signal;
   }
 
   /**
@@ -76,10 +79,25 @@ export default class Email {
         disableUrlAccess: true,
         secure: port === 465, // true for 465, false for other ports
         requireTLS: port !== 465, // Never authenticate over a plaintext SMTP connection.
+        tls: { rejectUnauthorized: true },
         auth: {
           user: EMAIL_USERNAME,
           pass: EMAIL_PASSWORD,
         },
+        // SMTPTransport.close() does not destroy an active connection. Own the
+        // TCP socket for cancellable outbox sends; Nodemailer still performs its
+        // normal verified TLS/STARTTLS upgrade on this supplied connection.
+        ...(this.signal ? { getSocket: (options, callback) => {
+          if (this.signal.aborted) return callback(this.signal.reason);
+          const socket = net.createConnection({ host: options.host, port: options.port, signal: this.signal });
+          let connected = false;
+          socket.once("error", error => { if (!connected) callback(error); });
+          socket.once("connect", () => {
+            if (this.signal.aborted) { socket.destroy(); return; }
+            connected = true;
+            callback(null, { connection: socket, secured: false });
+          });
+        } } : {}),
         // Connection timeout
         connectionTimeout: 10000,
         greetingTimeout: 10000,
@@ -100,6 +118,7 @@ export default class Email {
 
   async send(template, subject, data = {}) {
     try {
+      this.signal?.throwIfAborted();
       const templatePath = path.join(
         __dirname,
         `../views/email/${template}.pug`
@@ -143,13 +162,24 @@ export default class Email {
         subject,
         html,
         text: emailPlainText(html),
+        ...(this.messageId ? { messageId: this.messageId } : {}),
       };
 
       // Create transport and send
       const transport = this.newTransport();
+      let onAbort;
 
       try {
-        await transport.sendMail(mailOptions);
+        this.signal?.throwIfAborted();
+        const cancelled = this.signal && new Promise((_resolve, reject) => {
+          onAbort = () => {
+            transport.close?.();
+            reject(this.signal.reason);
+          };
+          this.signal.addEventListener("abort", onAbort, { once: true });
+        });
+        const delivery = transport.sendMail(mailOptions);
+        await (cancelled ? Promise.race([delivery, cancelled]) : delivery);
       } catch (sendError) {
         logger.error("Nodemailer send failed", {
           error: sendError.message,
@@ -180,6 +210,9 @@ export default class Email {
           errorCode: sendError.code,
           originalError: sendError.message,
         });
+      } finally {
+        if (onAbort) this.signal.removeEventListener("abort", onAbort);
+        transport.close?.();
       }
 
       logger.info("Email sent successfully", {

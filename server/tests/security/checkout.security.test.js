@@ -26,7 +26,8 @@ describe('atomic checkout controller', () => {
     });
     expect(res.status).toHaveBeenCalledWith(201);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({id:'created',isPaid:false,items:[expect.objectContaining({quantity:2})]}) }));
-    expect(mocks.send).toHaveBeenCalledWith(order);
+    // The SQL transaction owns durable enqueueing; the request never sends mail.
+    expect(mocks.send).not.toHaveBeenCalled();
   });
   it('replays a committed order without sending a duplicate email', async () => {
     const { res } = await checkout({ data: { order: { id: 'existing' }, reused: true } });

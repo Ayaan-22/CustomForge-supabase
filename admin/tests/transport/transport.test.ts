@@ -1,11 +1,65 @@
 import {beforeEach, afterEach, describe, it, expect, vi} from 'vitest';
-const state = vi.hoisted(() => ({accessToken:'access',twoFactorToken:'123456',user:{id:'admin',role:'admin'},clearAuth:vi.fn(),setToken:vi.fn(),setUser:vi.fn()}));
+const state = vi.hoisted(() => ({accessToken:'access' as string | null,twoFactorToken:'123456',user:{id:'admin',role:'admin'},clearAuth:vi.fn(),setAuth:vi.fn(),setToken:vi.fn(),setUser:vi.fn(),setTwoFactorToken:vi.fn()}));
 vi.mock('@/lib/auth-store', () => ({useAuthStore:{getState:() => state}}));
 const json = (body:unknown,status=200) => Response.json(body,{status});
 let request: typeof import('@/lib/transport').request;
-beforeEach(async () => {vi.resetModules();vi.clearAllMocks();({request}=await import('@/lib/transport'));});
+beforeEach(async () => {
+  vi.resetModules();vi.clearAllMocks();state.accessToken='access';state.user={id:'admin',role:'admin'};
+  state.setAuth.mockImplementation((token:string,user:{id:string;role:string})=>{state.accessToken=token;state.user=user;});
+  state.clearAuth.mockImplementation(()=>{state.accessToken=null;});
+  ({request}=await import('@/lib/transport'));
+});
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 describe('admin API security transport', () => {
+  it.each([409,503])('preserves the session when logout fails with %s',async status=>{
+    vi.stubGlobal('fetch',vi.fn(async(url:string)=>url.endsWith('/csrf-token')?json({data:{csrfToken:'current'}}):json({message:'Logout not completed'},status)));
+    await expect(request('/api/v1/auth/logout',{method:'POST'},false)).rejects.toMatchObject({status});
+    expect(state.accessToken).toBe('access');
+    expect(state.clearAuth).not.toHaveBeenCalled();
+  });
+  it('applies a successful login while the cookie mutation lock is held',async()=>{
+    let locked=false;
+    vi.stubGlobal('navigator',{locks:{request:async(_name:string,work:()=>Promise<unknown>)=>{locked=true;try{return await work();}finally{locked=false;}}}});
+    state.setAuth.mockImplementation((token:string,user:{id:string;role:string})=>{expect(locked).toBe(true);state.accessToken=token;state.user=user;});
+    vi.stubGlobal('fetch',vi.fn(async(url:string)=>url.endsWith('/csrf-token')?json({data:{csrfToken:'current'}}):json({token:'login-access',data:{user:{id:'signed-in-admin',role:'admin'}}})));
+    const {authClient}=await import('@/lib/auth-client');
+    await authClient.login({email:'admin@example.test',password:'fixture-password'});
+    expect(state.setAuth).toHaveBeenCalledOnce();
+    expect(state.accessToken).toBe('login-access');
+    expect(locked).toBe(false);
+  });
+  it('keeps a newer login when an older refresh rejects after logout',async()=>{
+    vi.stubGlobal('navigator',{});
+    let started!:()=>void, finish!:(response:Response)=>void;
+    const pending=new Promise<void>(resolve=>{started=resolve;});
+    vi.stubGlobal('fetch',vi.fn(async(url:string)=>{
+      if(url.endsWith('/csrf-token'))return json({data:{csrfToken:'current'}});
+      if(url.endsWith('/refresh')){started();return new Promise<Response>(resolve=>{finish=resolve;});}
+      return json({token:'newer-login',data:{user:{id:'new-admin',role:'admin'}}});
+    }));
+    const {refreshSession,endSession}=await import('@/lib/transport');
+    const restoring=refreshSession();
+    const rejected=expect(restoring).rejects.toMatchObject({status:401});
+    await pending;
+    endSession();
+    await request('/api/v1/auth/login',{method:'POST'},false);
+    state.clearAuth.mockClear();
+    finish(json({message:'Session ended'},401));
+    await rejected;
+    expect(state.accessToken).toBe('newer-login');
+    expect(state.clearAuth).not.toHaveBeenCalled();
+  });
+  it('does not clear a newer session for a delayed unauthorized response',async()=>{
+    let finish!:(response:Response)=>void;
+    vi.stubGlobal('fetch',vi.fn(()=>new Promise<Response>(resolve=>{finish=resolve;})));
+    const oldRequest=request('/api/v1/admin/orders',{},true,{skipRefresh:true});
+    const rejected=expect(oldRequest).rejects.toMatchObject({status:401});
+    state.accessToken='newer-login';
+    finish(json({message:'Expired old token'},401));
+    await rejected;
+    expect(state.accessToken).toBe('newer-login');
+    expect(state.clearAuth).not.toHaveBeenCalled();
+  });
   it.each(['http://127.0.0.1:3002', 'http://localhost:3002'])('keeps login and CSRF on %s despite legacy public API URLs', async origin => {
     vi.stubEnv('NEXT_PUBLIC_API_URL', 'http://localhost:5000/api/v1');
     vi.stubEnv('NEXT_PUBLIC_API_BASE_URL', 'http://127.0.0.1:5000');
@@ -58,7 +112,7 @@ describe('admin API security transport', () => {
       return refreshed ? json({data:[]}) : json({message:'Expired'},401);
     }));
     await Promise.all([request('/api/v1/admin/orders'),request('/api/v1/admin/products')]);
-    expect(refreshes).toBe(1);expect(state.setToken).toHaveBeenCalledWith('new');
+    expect(refreshes).toBe(1);expect(state.setAuth).toHaveBeenCalledWith('new', state.user);
   });
   it('does not leak internal server errors',async()=>{
     vi.stubGlobal('fetch',vi.fn(async()=>json({message:'database secret stack'},500)));
