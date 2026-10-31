@@ -1,93 +1,37 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import {
-  LayoutDashboard,
-  BarChart3,
-  Package,
-  ShoppingCart,
-  Users,
-  Ticket,
-  FileText,
-  Star,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react"
-import { cn } from "@/lib/utils"
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { AdminBrand } from "@/components/admin-brand";
+import { adminNavigation } from "@/lib/admin-navigation";
+import { cn } from "@/lib/utils";
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
-interface SidebarProps {
-  open: boolean
-  onToggle: () => void
-}
-
-const navItems = [
-  { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/analytics/sales", label: "Sales Analytics", icon: BarChart3 },
-  { href: "/admin/analytics/inventory", label: "Inventory", icon: Package },
-  { href: "/admin/products", label: "Products", icon: Package },
-  { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
-  { href: "/admin/users", label: "Users", icon: Users },
-  { href: "/admin/coupons", label: "Coupons", icon: Ticket },
-  { href: "/admin/reviews", label: "Reviews", icon: Star },
-  { href: "/admin/logs", label: "Logs", icon: FileText },
-]
-
-export function Sidebar({ open, onToggle }: SidebarProps) {
-  const pathname = usePathname()
-
-  return (
-    <>
-      {/* Sidebar */}
-      <aside
-        className={cn(
-          "relative h-screen bg-gradient-to-b from-[#14141A] to-[#0B0B0F] border-r border-[#2A2A35] transition-all duration-300 z-40",
-          open ? "w-64" : "w-20",
-        )}
-      >
-        {/* Logo */}
-        <div className="flex items-center justify-between h-16 px-4 border-b border-[#2A2A35]">
-          {open && (
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#7C3AED] to-[#3B82F6] flex items-center justify-center">
-                <span className="text-white font-bold text-sm">CF</span>
-              </div>
-              <span className="font-bold text-white text-lg">CustomForge</span>
-            </div>
-          )}
-          <button onClick={onToggle} className="p-1 hover:bg-[#2A2A35] rounded-lg transition-colors">
-            {open ? (
-              <ChevronLeft className="w-5 h-5 text-[#A0A0A8]" />
-            ) : (
-              <ChevronRight className="w-5 h-5 text-[#A0A0A8]" />
-            )}
-          </button>
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 px-3 py-6 space-y-2 overflow-y-auto">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            const isActive = pathname.startsWith(item.href)
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200",
-                  isActive
-                    ? "bg-gradient-to-r from-[#7C3AED] to-[#3B82F6] text-white shadow-lg shadow-purple-500/20"
-                    : "text-[#A0A0A8] hover:bg-[#2A2A35] hover:text-white",
-                )}
-              >
-                <Icon className="w-5 h-5 flex-shrink-0" />
-                {open && <span className="text-sm font-medium">{item.label}</span>}
-              </Link>
-            )
-          })}
-        </nav>
-      </aside>
-    </>
-  )
+type SidebarProps = { open: boolean; onToggle: () => void; collapsed?: boolean; onCollapse?: () => void };
+export function Sidebar({ open, onToggle, collapsed = false, onCollapse }: SidebarProps) {
+  const pathname = usePathname();
+  function navigation(compact = false, close?: () => void) {
+    return <nav className="fa-navigation" aria-label="Admin navigation">
+      {["Workspace", "Commerce", "People & activity", "Account"].map(group => <div className="fa-nav-group" key={group}>
+        <p className={cn("fa-nav-label", compact && "sr-only")}>{group}</p>
+        {adminNavigation.filter(item => item.group === group).map(item => {
+          const Icon = item.icon; const active = pathname.startsWith(item.href);
+          return <Link key={item.href} href={item.href} prefetch={false} onClick={close} title={compact ? item.label : undefined} aria-label={item.label} aria-current={active ? "page" : undefined} className={cn("fa-nav-link", active && "is-active")}>
+            <Icon size={19} aria-hidden="true" />{!compact && <><span>{item.label}</span>{active && <span className="fa-nav-dot" aria-hidden="true" />}</>}
+          </Link>;
+        })}
+      </div>)}
+    </nav>;
+  }
+  return <>
+    <aside className={cn("fa-sidebar", collapsed && "is-collapsed")}>
+      <div className="fa-sidebar-brand"><Link href="/admin/dashboard" aria-label="CustomForge admin overview"><AdminBrand compact={collapsed} /></Link></div>
+      {navigation(collapsed)}
+      <button type="button" className="fa-sidebar-collapse" onClick={onCollapse ?? onToggle} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed}>{collapsed ? <ChevronRight size={18} aria-hidden="true" /> : <><ChevronLeft size={18} aria-hidden="true" /><span>Collapse sidebar</span></>}</button>
+    </aside>
+    <Sheet open={open} onOpenChange={next => { if (next !== open) onToggle(); }}>
+      <SheetContent side="left" className="fa-mobile-sidebar"><SheetTitle className="sr-only">Admin navigation</SheetTitle><SheetDescription className="sr-only">Navigate CustomForge administration.</SheetDescription><div className="fa-sidebar-brand"><AdminBrand /></div>{navigation(false, onToggle)}</SheetContent>
+    </Sheet>
+  </>;
 }

@@ -1,5 +1,8 @@
 // server/models/Cart.js
-import { supabase } from "../config/db.js";
+const requireClient = (client) => {
+  if (!client) throw new Error("Supabase client is required");
+  return client;
+};
 
 /* ===========================================================
    CART HELPERS
@@ -16,10 +19,11 @@ export const CART_CONFIG = {
 /**
  * Get or create a cart row for a user (no items)
  */
-export const getOrCreateCart = async (userId) => {
+export const getOrCreateCart = async (userId, client) => {
+  const db = requireClient(client);
   if (!isValidUUID(userId)) throw new Error("Invalid user ID");
 
-  let { data: cart, error } = await supabase
+  let { data: cart, error } = await db
     .from("carts")
     .select("*")
     .eq("user_id", userId)
@@ -28,7 +32,7 @@ export const getOrCreateCart = async (userId) => {
   if (error) throw new Error(error.message);
 
   if (!cart) {
-    const { data: newCart, error: insertError } = await supabase
+    const { data: newCart, error: insertError } = await db
       .from("carts")
       .insert([{ user_id: userId }])
       .select()
@@ -44,10 +48,11 @@ export const getOrCreateCart = async (userId) => {
 /**
  * Load cart with items & product details
  */
-export const getCartWithItems = async (userId) => {
+export const getCartWithItems = async (userId, client) => {
+  const db = requireClient(client);
   if (!isValidUUID(userId)) throw new Error("Invalid user ID");
 
-  const { data: cart, error } = await supabase
+  const { data: cart, error } = await db
     .from("carts")
     .select(
       `
@@ -106,17 +111,18 @@ export const getCartWithItems = async (userId) => {
 /**
  * Clear cart (items + coupon)
  */
-export const clearCart = async (userId) => {
-  const cart = await getOrCreateCart(userId);
+export const clearCart = async (userId, client) => {
+  const db = requireClient(client);
+  const cart = await getOrCreateCart(userId, db);
 
-  const { error: itemsError } = await supabase
+  const { error: itemsError } = await db
     .from("cart_items")
     .delete()
     .eq("cart_id", cart.id);
 
   if (itemsError) throw new Error(itemsError.message);
 
-  const { error: cartError } = await supabase
+  const { error: cartError } = await db
     .from("carts")
     .update({ coupon_id: null })
     .eq("id", cart.id);
@@ -128,10 +134,11 @@ export const clearCart = async (userId) => {
 /**
  * Add or increment item in cart
  */
-export const addCartItem = async (userId, productId, quantity) => {
-  const cart = await getOrCreateCart(userId);
+export const addCartItem = async (userId, productId, quantity, client) => {
+  const db = requireClient(client);
+  const cart = await getOrCreateCart(userId, db);
 
-  const { data: existing, error } = await supabase
+  const { data: existing, error } = await db
     .from("cart_items")
     .select("*")
     .eq("cart_id", cart.id)
@@ -143,7 +150,7 @@ export const addCartItem = async (userId, productId, quantity) => {
   const qty = Number(quantity) || 1;
 
   if (!existing) {
-    const { error: insertError } = await supabase.from("cart_items").insert([
+      const { error: insertError } = await db.from("cart_items").insert([
       {
         cart_id: cart.id,
         product_id: productId,
@@ -155,7 +162,7 @@ export const addCartItem = async (userId, productId, quantity) => {
   } else {
     const newQty = Math.min(CART_CONFIG.MAX_QUANTITY, existing.quantity + qty);
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await db
       .from("cart_items")
       .update({ quantity: newQty })
       .eq("id", existing.id);
@@ -163,16 +170,17 @@ export const addCartItem = async (userId, productId, quantity) => {
     if (updateError) throw new Error(updateError.message);
   }
 
-  return getCartWithItems(userId);
+  return getCartWithItems(userId, db);
 };
 
 /**
  * Update cart item quantity
  */
-export const updateCartItem = async (userId, productId, quantity) => {
-  const cart = await getOrCreateCart(userId);
+export const updateCartItem = async (userId, productId, quantity, client) => {
+  const db = requireClient(client);
+  const cart = await getOrCreateCart(userId, db);
 
-  const { data: existing, error } = await supabase
+  const { data: existing, error } = await db
     .from("cart_items")
     .select("*")
     .eq("cart_id", cart.id)
@@ -190,28 +198,29 @@ export const updateCartItem = async (userId, productId, quantity) => {
     throw new Error("Invalid quantity");
   }
 
-  const { error: updateError } = await supabase
+  const { error: updateError } = await db
     .from("cart_items")
     .update({ quantity: qty })
     .eq("id", existing.id);
 
   if (updateError) throw new Error(updateError.message);
 
-  return getCartWithItems(userId);
+  return getCartWithItems(userId, db);
 };
 
 /**
  * Remove item from cart
  */
-export const removeCartItem = async (userId, productId) => {
-  const cart = await getOrCreateCart(userId);
+export const removeCartItem = async (userId, productId, client) => {
+  const db = requireClient(client);
+  const cart = await getOrCreateCart(userId, db);
 
-  const { error } = await supabase
+  const { error } = await db
     .from("cart_items")
     .delete()
     .eq("cart_id", cart.id)
     .eq("product_id", productId);
 
   if (error) throw new Error(error.message);
-  return getCartWithItems(userId);
+  return getCartWithItems(userId, db);
 };

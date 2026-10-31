@@ -1,60 +1,81 @@
-import Link from "next/link"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
+import Link from "next/link";
+import { ArrowUpRight, ShieldCheck, Gamepad2 } from "lucide-react";
+import { Brand } from "@/components/forge/brand";
 
 export function Footer() {
   return (
-    <footer className="border-t bg-background/80">
-      <div className="container mx-auto grid gap-8 px-4 py-10 md:grid-cols-4">
-        <div className="space-y-2">
-          <div className="text-lg font-heading">CustomForge</div>
-          <p className="text-sm text-muted-foreground">
-            Premium gaming components and software, curated for performance.
-          </p>
-        </div>
-        <div>
-          <div className="font-medium">Shop</div>
-          <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-            <li>
-              <Link href="/products?category=GPU">GPUs</Link>
-            </li>
-            <li>
-              <Link href="/products?category=CPU">CPUs</Link>
-            </li>
-            <li>
-              <Link href="/products?category=Peripherals">Peripherals</Link>
-            </li>
-            <li>
-              <Link href="/products?category=Software">Software</Link>
-            </li>
-          </ul>
-        </div>
-        <div>
-          <div className="font-medium">Support</div>
-          <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-            <li>
-              <Link href="#">Shipping & Returns</Link>
-            </li>
-            <li>
-              <Link href="#">Warranty</Link>
-            </li>
-            <li>
-              <Link href="#">Contact</Link>
-            </li>
-          </ul>
-        </div>
-        <div>
-          <div className="font-medium">Newsletter</div>
-          <p className="mt-2 text-sm text-muted-foreground">Get deals and updates.</p>
-          <div className="mt-3 flex gap-2">
-            <Input placeholder="you@example.com" />
-            <Button>Subscribe</Button>
+    <footer className="forge-footer">
+      <div className="forge-container">
+        <div className="forge-footer-top">
+          <div className="forge-footer-brand">
+            <Link href="/" prefetch={false}>
+              <Brand />
+            </Link>
+            <p>
+              For the frame chasers. The world builders.
+              <br />
+              The one-more-game crowd.
+              <br />
+              <strong>Forge your advantage.</strong>
+            </p>
+            <span>
+              <Gamepad2 size={16} /> BUILT BY GAMERS. FOR GAMERS.
+            </span>
           </div>
+          {[
+            {
+              title: "Find your gear",
+              links: [
+                ["PC components", "/products?category=GPU"],
+                ["Gaming peripherals", "/products?category=Keyboard"],
+                ["Prebuilt PCs", "/products?category=Prebuilt%20PCs"],
+                ["Deals", "/deals"],
+              ],
+            },
+            {
+              title: "Make it yours",
+              links: [
+                ["PC builder", "/pc-builder"],
+                ["Compare products", "/compare"],
+                ["Wishlist", "/wishlist"],
+                ["Explore all products", "/products"],
+              ],
+            },
+            {
+              title: "Your command center",
+              links: [
+                ["My account", "/profile"],
+                ["Order history", "/orders"],
+                ["Shipping addresses", "/addresses"],
+                ["Security & 2FA", "/profile/security"],
+              ],
+            },
+          ].map((group) => (
+            <div key={group.title}>
+              <h2>{group.title}</h2>
+              <ul>
+                {group.links.map(([label, href]) => (
+                  <li key={href}>
+                    <Link href={href} prefetch={false}>
+                      {label}
+                      <ArrowUpRight size={13} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
-      </div>
-      <div className="border-t py-4 text-center text-xs text-muted-foreground">
-        © {new Date().getFullYear()} CustomForge. All rights reserved.
+        <div className="forge-footer-bottom">
+          <p>© {new Date().getFullYear()} CustomForge. All rights reserved.</p>
+          <span>
+            <ShieldCheck size={15} /> Secure payments with Stripe
+          </span>
+          <span className="forge-footer-signature">
+            GOOD GEAR. GREAT GAMES.
+          </span>
+        </div>
       </div>
     </footer>
-  )
+  );
 }

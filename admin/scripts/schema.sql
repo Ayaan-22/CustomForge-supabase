@@ -25,9 +25,18 @@ create table if not exists users (
   two_factor_enabled boolean default false,
   two_factor_secret text,
   active boolean default true,
+  stripe_customer_id text,
+  payment_methods jsonb,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+-- Create index on stripe_customer_id for faster lookups
+create index if not exists idx_users_stripe_customer_id on users(stripe_customer_id);
+
+-- Add comment to columns
+COMMENT ON COLUMN users.stripe_customer_id IS 'Stripe customer ID for payment processing';
+COMMENT ON COLUMN users.payment_methods IS 'Stored payment methods metadata (JSONB)';
 
 -- ===========================================
 -- USER ADDRESSES
@@ -259,20 +268,56 @@ create table if not exists order_items (
   price_snapshot numeric not null
 );
 
--- Migration: Add stripe_customer_id and payment_methods to users table
--- Run this in your Supabase SQL editor
 
--- Add stripe_customer_id column (for storing Stripe customer ID)
-ALTER TABLE users 
-ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
+-- ===========================================
+-- RPC FUNCTIONS (ATOMIC OPERATIONS)
+-- ===========================================
 
--- Add payment_methods column (for storing payment method metadata as JSONB)
-ALTER TABLE users 
-ADD COLUMN IF NOT EXISTS payment_methods JSONB DEFAULT NULL;
+-- 1. Atomic Stock Change
+-- Usage: select change_stock('product-uuid', -5);
+CREATE OR REPLACE FUNCTION change_stock(p_product_id UUID, p_delta INT)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE products
+  SET 
+    stock = stock + p_delta,
+    updated_at = NOW()
+  WHERE id = p_product_id;
+  
+  -- Ensure stock never goes negative
+  IF EXISTS (SELECT 1 FROM products WHERE id = p_product_id AND stock < 0) THEN
+    RAISE EXCEPTION 'Insufficient stock for product %', p_product_id;
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
 
--- Create index on stripe_customer_id for faster lookups
-CREATE INDEX IF NOT EXISTS idx_users_stripe_customer_id ON users(stripe_customer_id);
+-- 2. Atomic Sales Increase
+-- Usage: select increase_sales('product-uuid', 2);
+CREATE OR REPLACE FUNCTION increase_sales(p_product_id UUID, p_qty INT)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE products
+  SET 
+    sales_count = sales_count + p_qty,
+    updated_at = NOW()
+  WHERE id = p_product_id;
+END;
+$$ LANGUAGE plpgsql;
 
--- Add comment to columns
-COMMENT ON COLUMN users.stripe_customer_id IS 'Stripe customer ID for payment processing';
-COMMENT ON COLUMN users.payment_methods IS 'Stored payment methods metadata (JSONB)';
+-- 3. Atomic Coupon Usage Increment
+-- Usage: select increment_coupon_usage('coupon-uuid');
+CREATE OR REPLACE FUNCTION increment_coupon_usage(p_coupon_id UUID)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE coupons
+  SET 
+    times_used = times_used + 1,
+    updated_at = NOW()
+  WHERE id = p_coupon_id;
+  
+  -- Ensure usage limit not exceeded
+  IF EXISTS (SELECT 1 FROM coupons WHERE id = p_coupon_id AND usage_limit IS NOT NULL AND times_used > usage_limit) THEN
+    RAISE EXCEPTION 'Coupon usage limit exceeded';
+  END IF;
+END;
+$$ LANGUAGE plpgsql;

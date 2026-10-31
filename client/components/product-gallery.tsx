@@ -1,11 +1,11 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
 export function ProductGallery({ images }: { images: string[] }) {
-  const [index, setIndex] = useState(0)
-  const active = images[index] || "/product-image-large.jpg"
+  const [index, setIndex] = useState(0);
+  const active = images[index] || "/product-image-large.jpg";
 
   return (
     <div className="space-y-3">
@@ -29,7 +29,9 @@ export function ProductGallery({ images }: { images: string[] }) {
           <button
             key={i}
             onClick={() => setIndex(i)}
-            className={`aspect-square overflow-hidden rounded-md border ${i === index ? "border-primary" : "border-border"}`}
+            className={`aspect-square overflow-hidden rounded-md border ${
+              i === index ? "border-primary" : "border-border"
+            }`}
             aria-label={`View image ${i + 1}`}
           >
             <img
@@ -42,5 +44,5 @@ export function ProductGallery({ images }: { images: string[] }) {
         ))}
       </div>
     </div>
-  )
+  );
 }

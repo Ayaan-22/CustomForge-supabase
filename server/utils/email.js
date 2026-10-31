@@ -1,12 +1,14 @@
 // server/utils/email.js
 import nodemailer from "nodemailer";
+import addressparser from "nodemailer/lib/addressparser/index.js";
 import pug from "pug";
-import { htmlToText } from "html-to-text";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import net from "node:net";
 import AppError from "./appError.js";
 import { logger } from "../middleware/logger.js";
+import { emailPlainText, orderEmailData, safeEmailUrl } from "./emailData.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,10 +18,13 @@ export default class Email {
     this.to = user.email;
     this.firstName = user.name?.split(" ")[0] || "User";
     this.url = url;
-    this.from = process.env.EMAIL_USERNAME
-      ? `Ayaan from GameShop <${process.env.EMAIL_USERNAME}>`
-      : process.env.EMAIL_FROM || "noreply@gameshop.com";
+    this.from = {
+      name: "CustomForge",
+      address: addressparser(process.env.EMAIL_FROM || process.env.EMAIL_USERNAME || '')[0]?.address,
+    };
     this.data = data;
+    this.messageId = data.messageId;
+    this.signal = data.signal;
   }
 
   /**
@@ -70,11 +75,29 @@ export default class Email {
       return nodemailer.createTransport({
         host,
         port,
+        disableFileAccess: true,
+        disableUrlAccess: true,
         secure: port === 465, // true for 465, false for other ports
+        requireTLS: port !== 465, // Never authenticate over a plaintext SMTP connection.
+        tls: { rejectUnauthorized: true },
         auth: {
           user: EMAIL_USERNAME,
           pass: EMAIL_PASSWORD,
         },
+        // SMTPTransport.close() does not destroy an active connection. Own the
+        // TCP socket for cancellable outbox sends; Nodemailer still performs its
+        // normal verified TLS/STARTTLS upgrade on this supplied connection.
+        ...(this.signal ? { getSocket: (options, callback) => {
+          if (this.signal.aborted) return callback(this.signal.reason);
+          const socket = net.createConnection({ host: options.host, port: options.port, signal: this.signal });
+          let connected = false;
+          socket.once("error", error => { if (!connected) callback(error); });
+          socket.once("connect", () => {
+            if (this.signal.aborted) { socket.destroy(); return; }
+            connected = true;
+            callback(null, { connection: socket, secured: false });
+          });
+        } } : {}),
         // Connection timeout
         connectionTimeout: 10000,
         greetingTimeout: 10000,
@@ -93,8 +116,9 @@ export default class Email {
     }
   }
 
-  async send(template, subject) {
+  async send(template, subject, data = {}) {
     try {
+      this.signal?.throwIfAborted();
       const templatePath = path.join(
         __dirname,
         `../views/email/${template}.pug`
@@ -112,10 +136,12 @@ export default class Email {
       let html;
       try {
         html = pug.renderFile(templatePath, {
-          firstName: this.firstName,
-          url: this.url,
-          subject,
           ...this.data,
+          ...data,
+          firstName: this.firstName,
+          url: safeEmailUrl(this.url),
+          subject,
+          year: new Date().getUTCFullYear(),
         });
       } catch (renderError) {
         logger.error("Email template rendering failed", {
@@ -135,18 +161,25 @@ export default class Email {
         to: this.to,
         subject,
         html,
-        text: htmlToText(html, {
-          wordwrap: 130,
-          ignoreImage: true,
-        }),
-        priority: "high",
+        text: emailPlainText(html),
+        ...(this.messageId ? { messageId: this.messageId } : {}),
       };
 
       // Create transport and send
       const transport = this.newTransport();
+      let onAbort;
 
       try {
-        await transport.sendMail(mailOptions);
+        this.signal?.throwIfAborted();
+        const cancelled = this.signal && new Promise((_resolve, reject) => {
+          onAbort = () => {
+            transport.close?.();
+            reject(this.signal.reason);
+          };
+          this.signal.addEventListener("abort", onAbort, { once: true });
+        });
+        const delivery = transport.sendMail(mailOptions);
+        await (cancelled ? Promise.race([delivery, cancelled]) : delivery);
       } catch (sendError) {
         logger.error("Nodemailer send failed", {
           error: sendError.message,
@@ -177,6 +210,9 @@ export default class Email {
           errorCode: sendError.code,
           originalError: sendError.message,
         });
+      } finally {
+        if (onAbort) this.signal.removeEventListener("abort", onAbort);
+        transport.close?.();
       }
 
       logger.info("Email sent successfully", {
@@ -206,25 +242,37 @@ export default class Email {
     }
   }
 
-  async sendWelcome() {
-    await this.send("welcome", "Welcome to the GameShop Family!");
+  async sendWelcome({ verifyEmail = false } = {}) {
+    await this.send("welcome", "Welcome to CustomForge — gear up", { verifyEmail });
   }
 
   async sendPasswordReset() {
     await this.send(
       "passwordReset",
-      "Your password reset token (valid for only 10 minutes)"
+      "Reset your CustomForge password"
     );
   }
 
   async sendOrderConfirmation(order) {
-    const orderId = order.id || order._id || order.order_number || "N/A";
-    await this.send("orderConfirmation", `Your GameShop Order #${orderId}`, {
-      order,
-    });
+    const data = orderEmailData(order);
+    await this.send("orderConfirmation", `CustomForge order #${data.shortOrderId} received`, data);
   }
 
   async sendVerificationEmail() {
-    await this.send("emailVerification", "Verify your GameShop account email");
+    await this.send("emailVerification", "Verify your CustomForge email");
+  }
+
+  // These templates are available for future post-commit notifications. They do
+  // not initiate cancellations, returns or refunds, or change payment state.
+  async sendOrderCancellation(order) {
+    if (order?.status !== 'cancelled') throw new AppError('Order cancellation is not confirmed', 500);
+    const data = orderEmailData(order);
+    await this.send('orderCancellation', `CustomForge order #${data.shortOrderId} cancelled`, data);
+  }
+
+  async sendReturnRequest(order) {
+    if ((order?.return_status ?? order?.returnStatus) !== 'requested') throw new AppError('Return request is not confirmed', 500);
+    const data = orderEmailData(order);
+    await this.send('returnRequest', `Return requested for CustomForge order #${data.shortOrderId}`, data);
   }
 }

@@ -2,10 +2,9 @@
 import jwt from "jsonwebtoken";
 import AppError from "./appError.js";
 import crypto from "crypto";
-import speakeasy from "speakeasy";
+import * as OTPAuth from "otpauth";
 import dotenv from "dotenv";
-import { supabase } from "../config/db.js";
-import { updateUser, findUserById } from "../models/User.js";
+import { updateUser } from "../models/User.js";
 
 dotenv.config();
 
@@ -17,7 +16,6 @@ if (!process.env.JWT_SECRET) {
 // Configuration constants
 const JWT_CONFIG = {
   algorithm: process.env.JWT_ALGORITHM || "HS256",
-  expiresIn: process.env.JWT_EXPIRES_IN || "30d",
   shortExpires: process.env.JWT_SHORT_EXPIRES_IN || "15m",
   refreshExpires:
     process.env.JWT_REFRESH_EXPIRES_IN || process.env.JWT_EXPIRES_IN || "30d",
@@ -29,11 +27,16 @@ const TOKEN_EXPIRY = {
 };
 
 // Core JWT Functions
-export const signToken = (userId, role = "user", expiresIn = null) => {
+export const signToken = (userId, role, expiresIn, tokenUse = "access") => {
+  if (!expiresIn) throw new Error("signToken requires an explicit expiry");
+  if (!["access", "refresh"].includes(tokenUse)) throw new Error("Invalid token purpose");
   try {
-    return jwt.sign({ userId, role }, process.env.JWT_SECRET, {
+    return jwt.sign({ userId, role, tokenUse, issuedAtMs: Date.now() }, process.env.JWT_SECRET, {
       algorithm: JWT_CONFIG.algorithm,
-      expiresIn: expiresIn || JWT_CONFIG.expiresIn,
+      expiresIn,
+      audience: `customforge-${tokenUse}`,
+      issuer: "customforge",
+      ...(tokenUse === "refresh" ? { jwtid: crypto.randomUUID() } : {}),
     });
   } catch (err) {
     throw AppError.internal("Failed to sign JWT", {
@@ -42,11 +45,20 @@ export const signToken = (userId, role = "user", expiresIn = null) => {
   }
 };
 
-export const verifyJWT = (token) => {
+export const verifyJWT = (token, tokenUse = "access") => {
   try {
-    return jwt.verify(token, process.env.JWT_SECRET, {
+    if (!["access", "refresh"].includes(tokenUse)) throw new Error("Invalid token purpose");
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, {
       algorithms: [JWT_CONFIG.algorithm],
+      audience: `customforge-${tokenUse}`,
+      issuer: "customforge",
     });
+    if (decoded.tokenUse !== tokenUse || typeof decoded.userId !== "string" ||
+        !Number.isFinite(decoded.exp) || !Number.isFinite(decoded.issuedAtMs) ||
+        (tokenUse === "refresh" && typeof decoded.jti !== "string")) {
+      throw new Error("Invalid token claims");
+    }
+    return decoded;
   } catch (err) {
     if (err.name === "TokenExpiredError") {
       throw AppError.unauthorized("Token has expired", {
@@ -81,10 +93,11 @@ export const hashToken = (token) => {
 export const verifyTokenAndFindUser = async (
   token,
   tokenField,
-  expiresField
+  expiresField,
+  client
 ) => {
+  if (!client) throw new Error("Explicit auth client is required");
   const hashedToken = hashToken(token);
-  const now = new Date().toISOString();
 
   // Map camelCase to snake_case for database fields
   const dbTokenField =
@@ -97,7 +110,7 @@ export const verifyTokenAndFindUser = async (
       : "password_reset_expires";
 
   // First find user by token
-  const { data: user, error } = await supabase
+  const { data: user, error } = await client
     .from("users")
     .select("*")
     .eq(dbTokenField, hashedToken)
@@ -121,11 +134,12 @@ export const verifyTokenAndFindUser = async (
 };
 
 // Specific token verification functions
-export const verifyEmailToken = async (token) => {
+export const verifyEmailToken = async (token, client) => {
   const user = await verifyTokenAndFindUser(
     token,
     "emailVerificationToken",
-    "emailVerificationExpires"
+    "emailVerificationExpires",
+    client
   );
   // Map the user row to camelCase format
   return {
@@ -152,11 +166,12 @@ export const verifyEmailToken = async (token) => {
   };
 };
 
-export const verifyPasswordResetToken = async (token) => {
+export const verifyPasswordResetToken = async (token, client) => {
   const user = await verifyTokenAndFindUser(
     token,
     "passwordResetToken",
-    "passwordResetExpires"
+    "passwordResetExpires",
+    client
   );
   // Map the user row to camelCase format
   return {
@@ -185,48 +200,55 @@ export const verifyPasswordResetToken = async (token) => {
 
 // Two-Factor Authentication
 export const generate2FASecret = (email) => {
-  return speakeasy.generateSecret({
-    name: `GameShop (${email})`,
-    length: 20,
+  const totp = new OTPAuth.TOTP({
+    label: `GameShop (${email})`,
+    secret: new OTPAuth.Secret({ size: 20 }),
+    algorithm: "SHA1", digits: 6, period: 30,
   });
+  return { base32: totp.secret.base32, otpauth_url: totp.toString() };
 };
 
 export const verify2FAToken = (secret, token) => {
-  return speakeasy.totp.verify({
-    secret,
-    encoding: "base32",
-    token,
-    window: 2,
-  });
+  try {
+    const totp = new OTPAuth.TOTP({
+      secret: OTPAuth.Secret.fromBase32(secret),
+      algorithm: "SHA1", digits: 6, period: 30,
+    });
+    return totp.validate({ token: String(token), window: 2 }) !== null;
+  } catch {
+    return false;
+  }
 };
 
 // Token Pair Generation
 export const generateTokenPair = (userId, role) => {
+  const refreshToken = signToken(userId, role, JWT_CONFIG.refreshExpires, "refresh");
   return {
     accessToken: signToken(userId, role, JWT_CONFIG.shortExpires),
-    refreshToken: signToken(userId, role, JWT_CONFIG.refreshExpires),
+    refreshToken,
+    refreshExpiresAt: new Date(verifyJWT(refreshToken, "refresh").exp * 1000),
   };
 };
 
 // User Model Helpers
-export const assignEmailVerificationToUser = async (userId) => {
+export const assignEmailVerificationToUser = async (userId, client) => {
   const { token, hashedToken, expires } = generateEmailVerificationToken();
 
   await updateUser(userId, {
     emailVerificationToken: hashedToken,
     emailVerificationExpires: new Date(expires).toISOString(),
-  });
+  }, client);
 
   return token;
 };
 
-export const assignPasswordResetToUser = async (userId) => {
+export const assignPasswordResetToUser = async (userId, client) => {
   const { token, hashedToken, expires } = generatePasswordResetToken();
 
   await updateUser(userId, {
     passwordResetToken: hashedToken,
     passwordResetExpires: new Date(expires).toISOString(),
-  });
+  }, client);
 
   return token;
 };

@@ -1,6 +1,8 @@
 // File: server/routes/adminRoutes.js
+// Mount: /api/v1/admin — protect + verifiedEmail + 2FA + restrictTo("admin") on all routes.
 
 import express from "express";
+import { deprecatedRoute } from "../middleware/deprecatedRoute.js";
 import {
   // Analytics & Dashboard
   getSalesAnalytics,
@@ -76,12 +78,11 @@ const router = express.Router();
    SECURITY & ACCESS CONTROL
    ========================================================================== */
 router.use(protect);
+router.use(adminLimiter);
+router.use(restrictTo("admin"));
 router.use(verifiedEmail);
 router.use(twoFactorAuth);
-router.use(restrictTo("admin"));
-
-// Apply global admin-level rate limiting
-router.use(adminLimiter);
+// app.js retains an IP budget for unauthenticated probes.
 
 /* ============================================================================
    ANALYTICS & DASHBOARD ROUTES
@@ -123,7 +124,7 @@ router.patch("/products/:id/stock", updateProductStock);
 router
   .route("/products/:id/reviews")
   .get(getProductReviews)
-  .delete(deleteProductReview);
+  .delete(deprecatedRoute((req) => `/api/v1/admin/reviews/${encodeURIComponent(req.params.id)}`), deleteProductReview);
 
 /* ============================================================================
    ORDER MANAGEMENT ROUTES
@@ -135,7 +136,7 @@ router.patch("/orders/:id/mark-paid", markOrderAsPaid);
 router.patch("/orders/:id/mark-delivered", updateOrderToDelivered);
 router.patch("/orders/:id/refund", processRefund);
 router.patch("/orders/:id/approve-return", approveReturn);
-router.post("/orders/:id/refund", processRefund);
+router.post("/orders/:id/refund", deprecatedRoute((req) => `/api/v1/admin/orders/${encodeURIComponent(req.params.id)}/refund`), processRefund);
 router.put("/orders/:id/process-return", processReturn);
 
 /* ============================================================================

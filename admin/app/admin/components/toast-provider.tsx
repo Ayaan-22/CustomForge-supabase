@@ -23,6 +23,10 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined)
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
 
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id))
+  }, [])
+
   const addToast = useCallback((message: string, type: Toast["type"], duration = 3000) => {
     const id = Math.random().toString(36).substr(2, 9)
     const toast: Toast = { id, message, type, duration }
@@ -32,11 +36,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     if (duration > 0) {
       setTimeout(() => removeToast(id), duration)
     }
-  }, [])
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id))
-  }, [])
+  }, [removeToast])
 
   return (
     <ToastContext.Provider value={{ toasts, addToast, removeToast }}>
@@ -60,12 +60,12 @@ function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: 
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`flex items-center gap-3 px-4 py-3 rounded-lg text-white animate-in fade-in slide-in-from-right ${
+          className={`fa-legacy-toast flex items-center gap-3 px-4 py-3 rounded-lg animate-in fade-in slide-in-from-right ${
             toast.type === "success"
-              ? "bg-green-500/20 border border-green-500/50"
+              ? "is-success"
               : toast.type === "error"
-                ? "bg-red-500/20 border border-red-500/50"
-                : "bg-blue-500/20 border border-blue-500/50"
+                ? "is-danger"
+                : "is-info"
           }`}
         >
           <span className="text-sm">{toast.message}</span>

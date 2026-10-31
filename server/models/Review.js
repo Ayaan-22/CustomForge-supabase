@@ -1,6 +1,10 @@
 // server/models/Review.js
-import { supabase } from "../config/db.js";
 import { recalcProductRatings } from "./Product.js";
+import { OWN_REVIEW_FIELDS } from "../utils/storefrontFields.js";
+const requireClient = (client) => {
+  if (!client) throw new Error("Supabase client is required");
+  return client;
+};
 
 /* ===========================================================
    CREATE / UPDATE / DELETE REVIEWS
@@ -9,7 +13,8 @@ import { recalcProductRatings } from "./Product.js";
 const isValidUUID = (value) =>
   typeof value === "string" && /^[0-9a-fA-F-]{36}$/.test(value);
 
-export const createReview = async (payload) => {
+export const createReview = async (payload, client) => {
+  const db = requireClient(client);
   const insertData = {
     product_id: payload.productId,
     game_id: payload.gameId ?? null,
@@ -24,25 +29,26 @@ export const createReview = async (payload) => {
     media: payload.media ?? [],
     platform: payload.platform ?? null,
     playtime_hours: payload.playtimeHours ?? null,
-    is_active: payload.isActive ?? true,
+    is_active: payload.isActive ?? false,
   };
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("reviews")
     .insert([insertData])
-    .select()
+    .select(OWN_REVIEW_FIELDS)
     .single();
 
   if (error) throw new Error(error.message);
 
   if (data.product_id) {
-    await recalcProductRatings(data.product_id);
+    await recalcProductRatings(data.product_id, db);
   }
 
   return data;
 };
 
-export const updateReview = async (reviewId, updates) => {
+export const updateReview = async (reviewId, updates, client) => {
+  const db = requireClient(client);
   const dbUpdates = {
     rating: updates.rating,
     title: updates.title,
@@ -62,36 +68,37 @@ export const updateReview = async (reviewId, updates) => {
     (key) => dbUpdates[key] === undefined && delete dbUpdates[key]
   );
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("reviews")
     .update(dbUpdates)
     .eq("id", reviewId)
-    .select()
+    .select(OWN_REVIEW_FIELDS)
     .single();
 
   if (error) throw new Error(error.message);
 
   if (data.product_id) {
-    await recalcProductRatings(data.product_id);
+    await recalcProductRatings(data.product_id, db);
   }
 
   return data;
 };
 
-export const softDeleteReview = async (reviewId) => {
+export const softDeleteReview = async (reviewId, client) => {
+  const db = requireClient(client);
   if (!isValidUUID(reviewId)) throw new Error("Invalid review ID");
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("reviews")
     .update({ is_active: false, updated_at: new Date().toISOString() })
     .eq("id", reviewId)
-    .select()
+    .select(OWN_REVIEW_FIELDS)
     .single();
 
   if (error) throw new Error(error.message);
 
   if (data.product_id) {
-    await recalcProductRatings(data.product_id);
+    await recalcProductRatings(data.product_id, db);
   }
 
   return data;

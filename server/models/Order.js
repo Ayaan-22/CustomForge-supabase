@@ -1,12 +1,16 @@
 // server/models/Order.js
-import { supabase } from "../config/db.js";
+const requireClient = (client) => {
+  if (!client) throw new Error("Supabase client is required");
+  return client;
+};
 
 /* ===========================================================
    BASIC HELPERS
 =========================================================== */
 
-export const getOrderById = async (id) => {
-  const { data, error } = await supabase
+export const getOrderById = async (id, client) => {
+  const db = requireClient(client);
+  const { data, error } = await db
     .from("orders")
     .select(
       `
@@ -21,13 +25,18 @@ export const getOrderById = async (id) => {
   return data || null;
 };
 
-export const getUserOrders = async (userId, { page = 1, limit = 10 } = {}) => {
+export const getUserOrders = async (
+  userId,
+  { page = 1, limit = 10 } = {},
+  client
+) => {
+  const db = requireClient(client);
   const p = Math.max(parseInt(page, 10) || 1, 1);
   const l = Math.min(parseInt(limit, 10) || 10, 50);
   const from = (p - 1) * l;
   const to = from + l - 1;
 
-  const { data, error, count } = await supabase
+  const { data, error, count } = await db
     .from("orders")
     .select(
       `
@@ -50,8 +59,9 @@ export const getUserOrders = async (userId, { page = 1, limit = 10 } = {}) => {
   };
 };
 
-export const createOrder = async (payload) => {
-  const { data, error } = await supabase
+export const createOrder = async (payload, client) => {
+  const db = requireClient(client);
+  const { data, error } = await db
     .from("orders")
     .insert([payload])
     .select()
@@ -61,19 +71,20 @@ export const createOrder = async (payload) => {
   return data;
 };
 
-export const markOrderPaid = async (orderId, paymentResult) => {
+export const markOrderPaid = async (orderId, paymentResult, client, expectedOrder) => {
+  const db = requireClient(client);
   const nowIso = new Date().toISOString();
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("orders")
     .update({
       is_paid: true,
       paid_at: nowIso,
       payment_result: paymentResult,
-      status: "paid",
+      status: expectedOrder.status === "pending" ? "paid" : expectedOrder.status,
       updated_at: nowIso,
     })
-    .eq("id", orderId)
+    .eq("id", orderId).eq("is_paid",false).eq("payment_method","cod").eq("status",expectedOrder.status).eq("updated_at",expectedOrder.updated_at)
     .select()
     .single();
 
@@ -81,9 +92,10 @@ export const markOrderPaid = async (orderId, paymentResult) => {
   return data;
 };
 
-export const updateOrderStatus = async (orderId, status) => {
+export const updateOrderStatus = async (orderId, status, client) => {
+  const db = requireClient(client);
   const nowIso = new Date().toISOString();
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("orders")
     .update({ status, updated_at: nowIso })
     .eq("id", orderId)

@@ -1,5 +1,8 @@
 // server/models/Coupon.js
-import { supabase } from "../config/db.js";
+const requireClient = (client) => {
+  if (!client) throw new Error("Supabase client is required");
+  return client;
+};
 
 export const COUPON_CONSTANTS = {
   MIN_CODE_LENGTH: 3,
@@ -11,12 +14,12 @@ export const COUPON_CONSTANTS = {
 /* ===========================================================
    DB ROW → DOMAIN OBJECT (camelCase)
 =========================================================== */
-const mapCouponRow = (row) => {
+export const mapCouponRow = (row) => {
   if (!row) return null;
   return {
     id: row.id,
     code: row.code,
-    discountType: row.discount_type,
+    discountType: row.discount_type === 'percentage' ? 'percent' : row.discount_type,
     discountValue: Number(row.discount_value),
     minPurchase: row.min_purchase,
     maxDiscount: row.max_discount,
@@ -37,10 +40,11 @@ const mapCouponRow = (row) => {
 /* ===========================================================
    BASIC FIND (code only, no validity checks)
 =========================================================== */
-export const findByCodeRaw = async (code) => {
+export const findByCodeRaw = async (code, client) => {
+  const db = requireClient(client);
   const couponCode = String(code).trim().toUpperCase();
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("coupons")
     .select("*")
     .eq("code", couponCode)
@@ -54,7 +58,8 @@ export const findByCodeRaw = async (code) => {
    FIND ACTIVE COUPON (FULL VALIDITY CHECK)
    Equivalent to Mongoose statics.findActiveByCode
 =========================================================== */
-export const findActiveCouponByCode = async (inputCode) => {
+export const findActiveCouponByCode = async (inputCode, client) => {
+  const db = requireClient(client);
   if (!inputCode) return null;
 
   const code = String(inputCode).trim().toUpperCase();
@@ -63,7 +68,7 @@ export const findActiveCouponByCode = async (inputCode) => {
   }
 
   // Step 1: Fetch coupon by code
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("coupons")
     .select("*")
     .eq("code", code)
@@ -179,14 +184,16 @@ export const computeCouponDiscount = (coupon, subtotal) => {
 
   if (discount > amount) discount = amount;
 
-  return Number(discount.toFixed(2));
+  // Match PostgreSQL numeric round(..., 2), including half-cent discounts.
+  return Math.round((discount + Number.EPSILON * Math.abs(discount)) * 100) / 100;
 };
 
 /* ===========================================================
    INCREMENT USAGE (via SQL RPC)
 =========================================================== */
-export const incrementCouponUsage = async (couponId) => {
-  const { data, error } = await supabase.rpc("increment_coupon_usage", {
+export const incrementCouponUsage = async (couponId, client) => {
+  const db = requireClient(client);
+  const { data, error } = await db.rpc("increment_coupon_usage", {
     p_coupon_id: couponId,
   });
 
