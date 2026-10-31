@@ -73,7 +73,7 @@ export function OrderTimeline({ order }: { order: Order }) {
             <article className={done ? "is-complete" : ""} key={title}>
               <Icon size={22} />
               <strong className="block">{title}</strong>
-              <span className="mt-2 block text-[9px] leading-4 text-muted-foreground">
+              <span className="mt-2 block text-xs leading-relaxed text-muted-foreground">
                 {detail}
               </span>
             </article>

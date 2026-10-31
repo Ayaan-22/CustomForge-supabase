@@ -11,7 +11,7 @@
 }
 .forge-order-detail-intro {
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: 1rem;
 }
 .forge-order-detail-loading {
   display: grid;
@@ -47,7 +47,7 @@
 }
 .forge-order-detail-state > p:not(.forge-eyebrow) {
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: 1rem;
   line-height: 1.85;
 }
 .forge-order-detail-state > div {
@@ -67,7 +67,7 @@
   min-height: 44px;
   margin-bottom: 20px;
   color: #a7bbcf;
-  font-size: 11px;
+  font-size: 0.875rem;
 }
 .forge-order-detail-back:hover {
   color: var(--primary);
@@ -88,7 +88,7 @@
 }
 .forge-order-detail-heading > div > p:last-child {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.7;
 }
 .forge-order-detail-status {
@@ -99,7 +99,7 @@
   border: 1px solid #a696ff50;
   color: #d1c6ff;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 0.9375rem;
   background: #a696ff0c;
 }
 .forge-order-detail-status > span {
@@ -127,7 +127,7 @@
   margin-bottom: 22px;
   border-bottom: 1px solid var(--border);
   color: #b7c5d3;
-  font-size: 11px;
+  font-size: 0.875rem;
 }
 .forge-order-detail-signal > span {
   display: flex;
@@ -140,7 +140,7 @@
 .forge-order-detail-signal [data-slot="button"] {
   margin-left: auto;
   min-height: 44px;
-  font-size: 11px;
+  font-size: 0.875rem;
 }
 .forge-order-detail-notice {
   display: flex;
@@ -152,7 +152,7 @@
   border-radius: 8px;
   background: #a696ff08;
   color: #bfcddd;
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.85;
 }
 .forge-order-detail-notice > svg {
@@ -166,7 +166,7 @@
 }
 .forge-order-detail-notice strong {
   color: #e1dafa;
-  font-size: 13px;
+  font-size: 1rem;
 }
 .forge-order-detail-notice.is-error {
   border-color: #ff928d40;
@@ -178,7 +178,7 @@
 .forge-order-detail-notice [data-slot="button"] {
   flex-shrink: 0;
   min-height: 44px;
-  font-size: 11px;
+  font-size: 0.875rem;
 }
 .forge-order-detail-layout {
   display: grid;
@@ -210,7 +210,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 18px;
+  font-size: 1.25rem;
   font-weight: 650;
   letter-spacing: -0.3px;
 }
@@ -219,7 +219,7 @@
 }
 .forge-order-detail-card > header > span {
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: 0.875rem;
 }
 .forge-order-detail-card > header svg {
   flex-shrink: 0;
@@ -249,7 +249,7 @@
   width: 37px;
   height: 37px;
   font:
-    10px ui-monospace,
+    0.875rem ui-monospace,
     monospace;
   color: var(--primary);
   background: #62f0dd08;
@@ -261,7 +261,7 @@
   min-width: 0;
 }
 .forge-order-detail-items h3 {
-  font-size: 13px;
+  font-size: 1rem;
   font-weight: 600;
   line-height: 1.7;
   overflow-wrap: anywhere;
@@ -269,7 +269,7 @@
 .forge-order-detail-items p {
   margin-top: 6px;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 0.875rem;
 }
 .forge-order-detail-items a {
   display: inline-flex;
@@ -277,7 +277,7 @@
   gap: 7px;
   min-height: 44px;
   color: var(--primary);
-  font-size: 10px;
+  font-size: 0.875rem;
 }
 .forge-order-item-price {
   max-width: 150px;
@@ -285,7 +285,7 @@
 }
 .forge-order-item-price > strong {
   display: block;
-  font-size: 13px;
+  font-size: 1rem;
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
@@ -293,7 +293,7 @@
   display: block;
   margin-top: 6px;
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: 0.875rem;
   line-height: 1.7;
 }
 .forge-order-shipping {
@@ -301,7 +301,7 @@
   gap: 7px;
   padding-left: 29px;
   color: #b0bfd0;
-  font-size: 13px;
+  font-size: 1rem;
   font-style: normal;
   line-height: 1.75;
   overflow-wrap: anywhere;
@@ -312,12 +312,12 @@
 }
 .forge-order-detail-empty {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.8;
 }
 .forge-order-actions > p {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.85;
 }
 .forge-order-actions > div {
@@ -353,7 +353,7 @@
   align-items: baseline;
   gap: 15px;
   color: #b4c2d2;
-  font-size: 12px;
+  font-size: 0.9375rem;
 }
 .forge-order-amounts > div > dd {
   text-align: right;
@@ -363,7 +363,7 @@
   padding-top: 18px;
   margin-top: 4px;
   color: var(--foreground);
-  font-size: 21px;
+  font-size: 1.5rem;
   font-weight: 650;
 }
 .forge-order-amounts > div:last-child > dd:not(.is-unrecorded) {
@@ -371,7 +371,7 @@
 }
 .forge-order-amounts dd.is-unrecorded {
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 0.875rem;
   font-weight: 400;
 }
 .forge-order-reference {
@@ -380,7 +380,7 @@
   margin-top: 25px;
   padding-top: 20px;
   border-top: 1px solid var(--border);
-  font-size: 11px;
+  font-size: 0.875rem;
 }
 .forge-order-reference dt {
   color: var(--muted-foreground);
@@ -397,7 +397,7 @@
   gap: 7px;
   margin-top: 22px;
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: 0.875rem;
   line-height: 1.8;
 }
 .forge-order-record-note > svg {
@@ -456,7 +456,7 @@
 }
 .forge-order-action-dialog [data-slot="alert-dialog-description"] {
   color: #adbdcf;
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.9;
 }
 .forge-order-action-error {
@@ -468,7 +468,7 @@
   border-radius: 6px;
   background: #ff928d07;
   color: #ffc4bd;
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.8;
 }
 .forge-order-action-error > svg {
@@ -477,7 +477,7 @@
 }
 .forge-order-action-error strong {
   display: block;
-  font-size: 12px;
+  font-size: 0.9375rem;
   margin-bottom: 4px;
 }
 .forge-order-action-review {
@@ -486,7 +486,7 @@
   border-radius: 6px;
   color: #bfcadb;
   background: #a696ff06;
-  font-size: 11px;
+  font-size: 0.875rem;
   line-height: 1.85;
 }
 .forge-order-action-review [data-slot="button"] {
@@ -495,7 +495,7 @@
 }
 .forge-order-dialog-status {
   color: #bdccdd;
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.8;
 }
 .forge-order-action-dialog [data-slot="alert-dialog-footer"] > button {

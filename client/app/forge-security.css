@@ -14,7 +14,7 @@
 .forge-security-heading > p:last-child {
   max-width: 620px;
   color: #a8b6c9;
-  font-size: 13px;
+  font-size: 1rem;
   line-height: 1.8;
 }
 .forge-security-panel {
@@ -47,13 +47,13 @@
 }
 .forge-security-overview h2 {
   color: #e4edf6;
-  font-size: 18px;
+  font-size: 1.25rem;
   font-weight: 600;
 }
 .forge-security-overview p {
   margin-top: 7px;
   color: #a3b1c4;
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.7;
 }
 .forge-security-status {
@@ -64,7 +64,7 @@
   border: 1px solid #4f496a;
   border-radius: 30px;
   color: #c4bce5;
-  font-size: 10px;
+  font-size: 0.875rem;
 }
 .forge-security-status i {
   width: 5px;
@@ -85,7 +85,7 @@
 .forge-security-intro p {
   max-width: 600px;
   color: #aebcd0;
-  font-size: 13px;
+  font-size: 1rem;
   line-height: 1.8;
   margin-bottom: 18px;
 }
@@ -108,7 +108,7 @@
   align-items: center;
   gap: 8px;
   color: #8a9bb1;
-  font-size: 10px;
+  font-size: 0.875rem;
   line-height: 1.5;
 }
 .forge-security-steps li > span {
@@ -120,7 +120,7 @@
   border: 1px solid #35455a;
   border-radius: 50%;
   font-family: ui-monospace, monospace;
-  font-size: 11px;
+  font-size: 0.875rem;
 }
 .forge-security-steps li.is-reached {
   color: #bcefe6;
@@ -131,7 +131,7 @@
   background: #62f0dd0b;
 }
 .forge-security-flow h3 {
-  font-size: 23px;
+  font-size: 1.5rem;
   font-weight: 650;
   letter-spacing: -0.025em;
   color: #e7f1fa;
@@ -146,7 +146,7 @@
 }
 .forge-security-flow p {
   color: #adbbce;
-  font-size: 13px;
+  font-size: 1rem;
   line-height: 1.8;
 }
 .forge-security-flow p strong {
@@ -161,19 +161,19 @@
 }
 .forge-security-field label {
   color: #c5d2e1;
-  font-size: 12px;
+  font-size: 0.9375rem;
 }
 .forge-security-field input {
   min-height: 48px;
   background: #0a1019;
   border-color: #3a4b62;
-  font-size: 15px;
+  font-size: 1.125rem;
 }
 .forge-security-field input[aria-invalid="true"] {
   border-color: #ffadb6;
 }
 .forge-security-field p {
-  font-size: 11px;
+  font-size: 0.875rem;
 }
 .forge-security-field p.forge-security-field-error {
   color: #ffadb6;
@@ -194,13 +194,13 @@
   background: #a696ff07;
 }
 .forge-security-key > span {
-  font-size: 9px;
-  letter-spacing: 0.12em;
+  font-size: 0.875rem;
+  letter-spacing: .05em;
   color: #b1a6d7;
 }
 .forge-security-key code {
   color: #e0f8f2;
-  font-size: 17px;
+  font-size: 1.25rem;
   letter-spacing: 0.08em;
   line-height: 1.8;
   overflow-wrap: anywhere;
@@ -208,7 +208,7 @@
 }
 .forge-security-key small {
   color: #a4b2c6;
-  font-size: 11px;
+  font-size: 0.875rem;
   line-height: 1.7;
 }
 .forge-security-actions {
@@ -219,10 +219,10 @@
 }
 .forge-security-actions button {
   min-height: 44px;
-  font-size: 12px;
+  font-size: 0.9375rem;
 }
 .forge-security-flow p.forge-security-footnote {
-  font-size: 11px;
+  font-size: 0.875rem;
   color: #91a2b9;
   margin-top: 17px;
 }
@@ -242,7 +242,7 @@
   margin-top: 2px;
 }
 .forge-security-feedback p {
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.7;
 }
 .forge-security-feedback.is-error {
@@ -268,18 +268,18 @@
 }
 .forge-security-password-panel h2 {
   color: #dfe9f4;
-  font-size: 17px;
+  font-size: 1.25rem;
   font-weight: 600;
 }
 .forge-security-password-panel p {
   margin-top: 6px;
   color: #9eafc4;
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.7;
 }
 .forge-security-password-panel a {
   min-height: 44px;
-  font-size: 12px;
+  font-size: 0.9375rem;
 }
 .forge-security-guidance {
   display: flex;
@@ -292,12 +292,12 @@
 }
 .forge-security-guidance h2 {
   color: #bfcfe0;
-  font-size: 13px;
+  font-size: 1rem;
   font-weight: 500;
 }
 .forge-security-guidance p {
   color: #8fa2b9;
-  font-size: 11px;
+  font-size: 0.875rem;
   line-height: 1.9;
   margin-top: 6px;
 }
@@ -328,7 +328,7 @@
     margin-left: 56px;
   }
   .forge-security-overview h2 {
-    font-size: 16px;
+    font-size: 1.125rem;
   }
   .forge-security-steps {
     gap: 8px;
@@ -336,17 +336,17 @@
   .forge-security-steps li {
     flex-direction: column;
     align-items: flex-start;
-    font-size: 9px;
+    font-size: 0.875rem;
     max-width: 88px;
   }
   .forge-security-field input {
-    font-size: 16px;
+    font-size: 1.125rem;
   }
   .forge-security-key {
     padding: 16px 12px;
   }
   .forge-security-key code {
-    font-size: 15px;
+    font-size: 1.125rem;
   }
   .forge-security-password-panel {
     align-items: flex-start;

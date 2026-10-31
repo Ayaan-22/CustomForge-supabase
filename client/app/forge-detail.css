@@ -20,7 +20,7 @@
   padding-inline: 2px;
   border-bottom: 2px solid transparent;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.9375rem;
   font-weight: 600;
 }
 .forge-product-sections a:hover,
@@ -59,7 +59,7 @@
   color: var(--primary);
   border: 1px solid #62f0dd35;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 0.9375rem;
 }
 .forge-demo-notice {
   color: #c2b8ef;
@@ -68,7 +68,7 @@
   border-radius: 6px;
   padding: 10px 12px;
   margin-top: 12px;
-  font-size: 11px;
+  font-size: 0.875rem;
   line-height: 1.6;
 }
 @media (max-width: 767px) {
@@ -78,6 +78,6 @@
   }
   .forge-product-sections a {
     min-height: 46px;
-    font-size: 11px;
+    font-size: 0.875rem;
   }
 }

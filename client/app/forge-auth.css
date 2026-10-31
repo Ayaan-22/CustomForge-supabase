@@ -8,7 +8,7 @@
   gap: 9px;
   min-height: 44px;
   color: #a3adbe;
-  font-size: 12px;
+  font-size: 0.9375rem;
   margin-bottom: 19px;
 }
 .forge-auth-back:hover {
@@ -55,7 +55,7 @@
   gap: 14px;
 }
 .forge-auth-showcase-top .forge-brand {
-  font-size: 15px;
+  font-size: 1.125rem;
   letter-spacing: -0.6px;
 }
 .forge-auth-showcase-top .forge-mark {
@@ -65,15 +65,15 @@
 .forge-auth-showcase-top > span {
   color: #91a4b8;
   font:
-    8px ui-monospace,
+    0.875rem ui-monospace,
     monospace;
-  letter-spacing: 1px;
+  letter-spacing: .05em;
 }
 .forge-auth-showcase-copy {
   margin-top: 55px;
 }
 .forge-auth-showcase-copy > .forge-eyebrow {
-  font-size: 9px;
+  font-size: 0.875rem;
 }
 .forge-auth-showcase-copy h2 {
   font-size: clamp(35px, 4.5vw, 54px);
@@ -87,7 +87,7 @@
 }
 .forge-auth-showcase-copy > p:last-child {
   color: #a3adbe;
-  font-size: 13px;
+  font-size: 1rem;
   line-height: 1.9;
 }
 .forge-auth-scene {
@@ -123,9 +123,9 @@
   position: absolute;
   bottom: 4px;
   font:
-    8px ui-monospace,
+    0.875rem ui-monospace,
     monospace;
-  letter-spacing: 1.5px;
+  letter-spacing: .05em;
   color: #92a3b9;
 }
 .forge-auth-benefits {
@@ -142,7 +142,7 @@
   align-items: center;
   gap: 7px;
   color: #b5c2d4;
-  font-size: 10px;
+  font-size: 0.875rem;
 }
 .forge-auth-benefits svg {
   color: #a696ff;
@@ -165,7 +165,7 @@
 }
 .forge-auth-description {
   color: #a3adbe;
-  font-size: 13px;
+  font-size: 1rem;
   line-height: 1.85;
   overflow-wrap: anywhere;
 }
@@ -181,7 +181,7 @@
   align-items: center;
   gap: 7px;
   color: #d4dfed;
-  font-size: 12px;
+  font-size: 0.9375rem;
   font-weight: 500;
   margin-bottom: 10px;
 }
@@ -191,7 +191,7 @@
   border: 1px solid #3e4c63;
   border-radius: 6px;
   background: #090f19;
-  font-size: 14px;
+  font-size: 1.125rem;
   box-shadow: none;
   padding-inline: 14px;
 }
@@ -208,13 +208,13 @@
   border-color: #ff8c81;
 }
 .forge-auth-field-help {
-  font-size: 11px;
+  font-size: 0.875rem;
   line-height: 1.85;
   color: #a3adbe;
   margin-top: 9px;
 }
 .forge-auth-field-error {
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.85;
   color: #ffb5ac;
   margin-top: 9px;
@@ -249,7 +249,7 @@
 .forge-auth-submit {
   width: 100%;
   min-height: 50px;
-  font-size: 13px;
+  font-size: 1rem;
   margin-top: 2px;
 }
 .forge-auth-links {
@@ -258,7 +258,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 9px 18px;
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.7;
   color: #a3adbe;
 }
@@ -280,7 +280,7 @@
   border-top: 1px solid #2d3b4e;
   padding-top: 20px;
   margin-top: 21px;
-  font-size: 12px;
+  font-size: 0.9375rem;
   color: #a3adbe;
   line-height: 1.9;
   text-align: center;
@@ -302,7 +302,7 @@
   padding-top: 23px;
   margin-top: 20px;
   color: #98a8bd;
-  font-size: 10px;
+  font-size: 0.875rem;
   line-height: 1.7;
   border-top: 1px solid #2d3b4e;
 }
@@ -319,7 +319,7 @@
   border-radius: 7px;
   background: #a696ff08;
   color: #c5b8f7;
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.9;
   margin-block: 8px 16px;
   overflow-wrap: anywhere;
@@ -334,7 +334,7 @@
 .forge-auth-feedback strong {
   display: block;
   color: inherit;
-  font-size: 13px;
+  font-size: 1rem;
   font-weight: 600;
   margin-bottom: 5px;
 }
@@ -366,7 +366,7 @@
   border-radius: 6px;
   color: #d4dfed;
   background: #090f19;
-  font-size: 13px;
+  font-size: 1rem;
   overflow-wrap: anywhere;
 }
 .forge-auth-recipient svg {
@@ -398,14 +398,14 @@
 }
 .forge-auth-state p {
   color: #a3adbe;
-  font-size: 13px;
+  font-size: 1rem;
   line-height: 1.9;
 }
 .forge-auth-state [data-slot="button"] {
   min-height: 48px;
 }
 .forge-auth-note {
-  font-size: 11px;
+  font-size: 0.875rem;
   line-height: 1.9;
   color: #a3adbe;
   margin-block: 13px;
@@ -414,7 +414,7 @@
   max-width: 260px;
   font-family: ui-monospace, monospace;
   letter-spacing: 0.24em;
-  font-size: 20px !important;
+  font-size: 1.375rem !important;
 }
 .forge-auth-shell :is(a, button):focus-visible,
 .forge-auth-modal :is(a, button):focus-visible {
@@ -435,7 +435,7 @@
 .forge-auth-modal .forge-auth-field input {
   text-align: center;
   font:
-    22px ui-monospace,
+    1.5rem ui-monospace,
     monospace;
   letter-spacing: 0.3em;
 }
@@ -516,7 +516,7 @@
     display: none;
   }
   .forge-auth-showcase-copy > p:last-child {
-    font-size: 12px;
+    font-size: 0.9375rem;
     max-width: 340px;
   }
   .forge-auth-showcase-copy > p:last-child br {
@@ -532,7 +532,7 @@
     gap: 10px 18px;
   }
   .forge-auth-benefits li {
-    font-size: 9px;
+    font-size: 0.875rem;
   }
   .forge-auth-card {
     padding: 30px 27px 25px;
@@ -561,10 +561,10 @@
     gap: 20px;
   }
   .forge-auth-field input {
-    font-size: 16px;
+    font-size: 1.125rem;
   }
   .forge-auth-assurance {
-    font-size: 9px;
+    font-size: 0.875rem;
   }
   .forge-auth-modal {
     padding: 23px;

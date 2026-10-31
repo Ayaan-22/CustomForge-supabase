@@ -17,10 +17,10 @@
   --fa-overlay: #030912bd;
   --fa-skeleton-start: #182738;
   --fa-skeleton-end: #263d50;
-  --fa-type-caption: .75rem;
-  --fa-type-label: .8125rem;
-  --fa-type-body: .875rem;
-  --fa-type-panel: 1.0625rem;
+  --fa-type-caption: .875rem;
+  --fa-type-label: 1rem;
+  --fa-type-body: 1.125rem;
+  --fa-type-panel: 1.25rem;
   --fa-type-title: clamp(1.75rem, 2.6vw, 2.25rem);
   --sidebar: var(--fa-surface-subtle);
   --sidebar-foreground: var(--foreground);
@@ -88,12 +88,12 @@ html.light {
 .fa-theme-switch:hover, .fa-theme-switch[data-state="open"] { border-color: var(--primary); background: var(--fa-accent-soft); color: var(--primary); }
 .fa-theme-menu { min-width: 262px; }
 .fa-theme-option { display: grid; gap: 2px; }
-.fa-theme-option strong { font-size: 14px; font-weight: 550; }
-.fa-theme-option small { color: var(--muted-foreground); font-size: 12px; line-height: 1.5; }
+.fa-theme-option strong { font-size: 1.125rem; font-weight: 550; }
+.fa-theme-option small { color: var(--muted-foreground); font-size: 0.9375rem; line-height: 1.5; }
 .fa-legacy-toast { border: 1px solid var(--border); background: var(--popover); color: var(--popover-foreground); box-shadow: var(--fa-shadow); }
 .fa-legacy-toast.is-success { border-color: var(--fa-success); }
 .fa-legacy-toast.is-danger { border-color: var(--fa-danger); }
 .fa-legacy-toast.is-info { border-color: var(--fa-blue); }
 /* Static SVG labels and portaled tooltip content inherit the current chart typography. */
-.recharts-text { font-family: var(--font-admin-sans), Arial, sans-serif; font-size: 14px; fill: var(--muted-foreground); }
+.recharts-text { font-family: var(--font-admin-sans), Arial, sans-serif; font-size: 1.125rem; fill: var(--muted-foreground); }
 .recharts-default-tooltip { background: var(--popover); border-color: var(--border); color: var(--popover-foreground); }

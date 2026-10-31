@@ -29,9 +29,9 @@
   background: #090d14e8;
   color: var(--primary);
   font:
-    10px ui-monospace,
+    0.875rem ui-monospace,
     monospace;
-  letter-spacing: 0.08em;
+  letter-spacing: .05em;
 }
 .forge-product-gallery .forge-gallery-zoom {
   min-height: 44px;
@@ -47,7 +47,7 @@
 .forge-gallery-navigation p {
   color: var(--muted-foreground);
   font:
-    11px ui-monospace,
+    0.875rem ui-monospace,
     monospace;
 }
 .forge-gallery-navigation [data-slot="button"] {
@@ -72,7 +72,7 @@
 }
 .forge-gallery-help {
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 0.875rem;
   line-height: 1.7;
   margin-top: 8px;
 }
@@ -90,7 +90,7 @@
 }
 .forge-gallery-dialog [data-slot="dialog-title"] {
   padding-right: 20px;
-  font-size: 17px;
+  font-size: 1.25rem;
   line-height: 1.45;
 }
 .forge-gallery-zoom-stage {
@@ -115,14 +115,14 @@
   min-width: 44px;
   text-align: center;
   font:
-    12px ui-monospace,
+    0.9375rem ui-monospace,
     monospace;
 }
 .forge-gallery-rotation {
   display: block;
   margin-top: 16px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.9375rem;
 }
 .forge-gallery-rotation input {
   display: block;
@@ -154,7 +154,7 @@
 .forge-depth-intro p:not(.forge-eyebrow),
 .forge-depth-description > p:not(.forge-eyebrow) {
   color: #a8b8c9;
-  font-size: 14px;
+  font-size: 1.125rem;
   line-height: 1.9;
 }
 .forge-depth-art {
@@ -175,7 +175,7 @@
   left: 14px;
   color: var(--primary);
   font:
-    10px ui-monospace,
+    0.875rem ui-monospace,
     monospace;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -222,13 +222,13 @@
 .forge-decision-grid h3 {
   color: var(--primary);
   margin-block: 14px 10px;
-  font-size: 23px;
+  font-size: 1.5rem;
   font-weight: 650;
   overflow-wrap: anywhere;
 }
 .forge-decision-grid article > p:last-child {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.85;
 }
 .forge-depth-features {
@@ -241,7 +241,7 @@
   display: flex;
   gap: 10px;
   align-items: center;
-  font-size: 14px;
+  font-size: 1.125rem;
   font-weight: 600;
 }
 .forge-depth-features h3 svg {
@@ -258,14 +258,14 @@
   align-items: baseline;
   gap: 14px;
   color: #b9c3d2;
-  font-size: 13px;
+  font-size: 1rem;
   line-height: 1.7;
 }
 .forge-depth-features li > span {
   flex-shrink: 0;
   color: var(--primary);
   font:
-    10px ui-monospace,
+    0.875rem ui-monospace,
     monospace;
 }
 .forge-setup-guide {
@@ -282,13 +282,13 @@
   color: var(--primary);
 }
 .forge-setup-guide h3 {
-  font-size: 14px;
+  font-size: 1.125rem;
   font-weight: 600;
 }
 .forge-setup-guide p {
   margin-block: 8px 15px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.85;
 }
 .forge-support-grid {
@@ -307,18 +307,18 @@
 }
 .forge-support-grid h3 {
   margin-block: 12px;
-  font-size: 15px;
+  font-size: 1.125rem;
   font-weight: 600;
 }
 .forge-support-grid strong {
   display: block;
   color: #d2c9f3;
-  font-size: 14px;
+  font-size: 1.125rem;
   overflow-wrap: anywhere;
 }
 .forge-support-grid p {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.85;
   margin-block: 10px;
 }
@@ -326,7 +326,7 @@
   max-width: 680px;
   margin-block: -5px 24px;
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: 1rem;
   line-height: 1.8;
 }
 .forge-complement-grid {
@@ -356,13 +356,13 @@
   gap: 7px;
   align-items: center;
   color: #d2c9f3;
-  font-size: 11px;
+  font-size: 0.875rem;
   font-weight: 600;
 }
 .forge-complement-reason p {
   margin-top: 8px;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 0.875rem;
   line-height: 1.8;
 }
 .forge-complements-empty {
@@ -380,7 +380,7 @@
 .forge-complements-empty p {
   flex: 1;
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: 1rem;
   line-height: 1.8;
 }
 @media (min-width: 640px) {

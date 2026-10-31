@@ -18,7 +18,7 @@
 .forge-checkout-heading > div > p:last-child {
   max-width: 580px;
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: 1rem;
   line-height: 1.85;
 }
 .forge-checkout-heading > svg {
@@ -52,7 +52,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 15px;
-  font-size: 17px;
+  font-size: 1.25rem;
   font-weight: 600;
 }
 .forge-checkout-section-title > span {
@@ -66,7 +66,7 @@
   width: 27px;
   height: 27px;
   font:
-    10px ui-monospace,
+    0.875rem ui-monospace,
     monospace;
   border: 1px solid #62f0dd40;
   color: var(--primary);
@@ -75,7 +75,7 @@
 }
 .forge-checkout-section-title > small {
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: 0.875rem;
   font-weight: 400;
 }
 .forge-checkout-section-title svg {
@@ -84,7 +84,7 @@
 .forge-checkout-section-title [data-slot="button"] {
   min-height: 44px;
   padding-inline: 12px;
-  font-size: 11px;
+  font-size: 0.875rem;
 }
 .forge-checkout-choice {
   position: relative;
@@ -135,12 +135,12 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 9px;
-  font-size: 14px;
+  font-size: 1.125rem;
   line-height: 1.5;
 }
 .forge-address-default {
   font:
-    9px ui-monospace,
+    0.875rem ui-monospace,
     monospace;
   text-transform: uppercase;
   padding: 4px 6px;
@@ -151,7 +151,7 @@
 }
 .forge-address-line {
   color: #aab6c7;
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -162,7 +162,7 @@
   min-height: 44px;
   margin-top: 8px;
   color: var(--primary);
-  font-size: 11px;
+  font-size: 0.875rem;
 }
 .forge-payment-choice > label {
   display: flex;
@@ -179,14 +179,14 @@
 }
 .forge-payment-choice strong {
   display: block;
-  font-size: 14px;
+  font-size: 1.125rem;
   font-weight: 550;
 }
 .forge-payment-choice small {
   display: block;
   margin-top: 7px;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 0.875rem;
   font-weight: 400;
   line-height: 1.9;
 }
@@ -205,7 +205,7 @@
   min-height: 40px;
   margin-top: 12px;
   color: #a9bbca;
-  font-size: 11px;
+  font-size: 0.875rem;
   line-height: 1.85;
 }
 .forge-coupon-feedback > svg {
@@ -229,14 +229,14 @@
   margin-bottom: 15px;
 }
 .forge-checkout-empty h3 {
-  font-size: 16px;
+  font-size: 1.125rem;
   font-weight: 600;
 }
 .forge-checkout-empty p {
   max-width: 340px;
   margin: 10px auto 16px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.85;
 }
 .forge-checkout-alert {
@@ -246,7 +246,7 @@
   border-radius: 6px;
   background: #ff928d08;
   color: #ffc5c1;
-  font-size: 12px;
+  font-size: 0.9375rem;
   line-height: 1.75;
 }
 .forge-checkout-summary-error {
@@ -305,7 +305,7 @@
 .forge-checkout-items > li > div > a {
   display: block;
   color: #dde6f1;
-  font-size: 12px;
+  font-size: 0.9375rem;
   font-weight: 500;
   line-height: 1.55;
   overflow-wrap: anywhere;
@@ -316,24 +316,24 @@
 .forge-checkout-items > li > div > span {
   display: block;
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: 0.875rem;
   margin-top: 7px;
 }
 .forge-checkout-items > li > strong {
   flex-shrink: 0;
   max-width: 95px;
-  font-size: 12px;
+  font-size: 0.9375rem;
   text-align: right;
   padding-top: 4px;
   overflow-wrap: anywhere;
 }
 .forge-checkout-total-lines dl > div {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.9375rem;
 }
 .forge-checkout-total-lines dl > div:last-child {
   color: var(--foreground);
-  font-size: 22px;
+  font-size: 1.5rem;
   margin-top: 14px;
 }
 .forge-checkout-total-lines dl > div:last-child dd {
@@ -345,13 +345,13 @@
   align-items: center;
   gap: 7px;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 0.875rem;
 }
 .forge-checkout-submit {
   min-height: 48px;
   color: #0a1b18;
   background: var(--primary);
-  font-size: 13px;
+  font-size: 1rem;
   font-weight: 650;
 }
 .forge-checkout-submit:hover:not(:disabled) {
@@ -363,7 +363,7 @@
 .forge-checkout-readiness {
   min-height: 20px;
   color: #b8c4d4;
-  font-size: 11px;
+  font-size: 0.875rem;
   line-height: 1.7;
   text-align: center;
 }
@@ -373,7 +373,7 @@
   justify-content: center;
   gap: 6px;
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: 0.875rem;
   line-height: 1.7;
   text-align: center;
 }
@@ -424,13 +424,13 @@
 }
 .forge-checkout-recovery-panel > p:not(.forge-eyebrow) {
   color: #b3c1d0;
-  font-size: 14px;
+  font-size: 1.125rem;
   line-height: 1.9;
 }
 .forge-checkout-recovery-panel > .forge-checkout-recovery-note {
   margin-top: 15px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.9375rem;
 }
 .forge-checkout-recovery-actions {
   display: flex;
@@ -474,7 +474,7 @@
     padding-inline: 18px;
   }
   .forge-checkout-section-title {
-    font-size: 15px;
+    font-size: 1.125rem;
     gap: 10px;
   }
   .forge-checkout-section-title > span {
@@ -506,14 +506,14 @@
   }
   .forge-checkout-mobile-action span:not(.forge-processing) {
     display: block;
-    font-size: 10px;
+    font-size: 0.875rem;
     color: var(--muted-foreground);
   }
   .forge-checkout-mobile-action strong {
     display: block;
     margin-top: 4px;
     color: var(--primary);
-    font-size: 20px;
+    font-size: 1.375rem;
     letter-spacing: -0.6px;
     overflow-wrap: anywhere;
   }
@@ -531,7 +531,7 @@
     gap: 10px;
     min-height: 44px;
     color: #b3c1d0;
-    font-size: 10px;
+    font-size: 0.875rem;
     line-height: 1.6;
   }
   .forge-checkout-mobile-action > a svg {
@@ -542,7 +542,7 @@
     padding-bottom: calc(168px + env(safe-area-inset-bottom));
   }
   .forge-checkout-mobile-action .forge-processing {
-    font-size: 11px;
+    font-size: 0.875rem;
   }
   .forge-checkout-recovery {
     padding-bottom: 45px;

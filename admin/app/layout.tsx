@@ -5,6 +5,7 @@ import "./globals.css"
 import "./forge-admin.css"
 import "./forge-controls.css"
 import "./forge-themes.css"
+import "./forge-cursor.css"
 import { Toaster } from "@/components/ui/toaster"
 import { AuthProvider } from "@/app/components/auth-provider" // Import AuthProvider
 import {Toaster as Sonner} from "@/components/ui/sonner"

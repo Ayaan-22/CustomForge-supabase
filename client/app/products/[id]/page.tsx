@@ -176,7 +176,7 @@ export default function ProductPage() {
             {product.brand} / {product.category}
           </p>
           <h1>{product.name}</h1>
-          <p className="text-[10px] font-mono text-muted-foreground">
+          <p className="text-xs leading-relaxed font-mono text-muted-foreground">
             SKU / {product.sku}
           </p>
           {demo && (

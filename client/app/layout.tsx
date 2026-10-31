@@ -14,6 +14,7 @@ import "./globals.css";
 import "./forge.css";
 import "./forge-navigation.css";
 import "./forge-controls.css";
+import "./forge-cursor.css";
 import { StoreExperience } from "@/components/forge/experience";
 import { ComparisonDock } from "@/components/forge/compare-button";
 

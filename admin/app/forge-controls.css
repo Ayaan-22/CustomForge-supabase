@@ -20,7 +20,7 @@
   border-radius: 8px;
   background: var(--fa-input-surface);
   color: var(--foreground);
-  font-size: 14px;
+  font-size: 1.125rem;
   line-height: 1.4;
   text-align: left;
   box-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent);
@@ -156,7 +156,7 @@
   border: 1px solid transparent;
   border-radius: 6px;
   color: var(--forge-menu-text);
-  font-size: 14px;
+  font-size: 1.125rem;
   line-height: 1.45;
   cursor: pointer;
   overflow-wrap: anywhere;
@@ -211,10 +211,10 @@
 :is([data-slot="select-label"], [data-slot="dropdown-menu-label"], [data-slot="context-menu-label"], [data-slot="menubar-label"]) {
   padding: 10px 12px 8px;
   color: var(--fa-text-tertiary);
-  font-size: 11px;
+  font-size: 0.875rem;
   font-weight: 600;
   line-height: 1.5;
-  letter-spacing: 0.08em;
+  letter-spacing: .05em;
   text-transform: uppercase;
 }
 :is([data-slot="dropdown-menu-label"], [data-slot="context-menu-label"], [data-slot="menubar-label"])[data-inset="true"] {
@@ -282,7 +282,7 @@
   [data-slot="select-item"],
   [data-slot="dropdown-menu-item"],
   [data-slot="dropdown-menu-checkbox-item"],
-  [data-slot="dropdown-menu-radio-item"] { font-size: 16px; }
+  [data-slot="dropdown-menu-radio-item"] { font-size: 1.125rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   [data-slot="select-trigger"],

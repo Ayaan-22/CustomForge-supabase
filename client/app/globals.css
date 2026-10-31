@@ -45,11 +45,11 @@
   --cf-space-6: 1.5rem;
   --cf-space-8: 2rem;
   --cf-page-min-h: 48vh;
-  --cf-text-xs: 0.75rem;
-  --cf-text-sm: 0.875rem;
-  --cf-text-base: 1rem;
-  --cf-text-lg: 1.125rem;
-  --cf-text-xl: 1.25rem;
+  --cf-text-xs: 0.875rem;
+  --cf-text-sm: 1rem;
+  --cf-text-base: 1.125rem;
+  --cf-text-lg: 1.25rem;
+  --cf-text-xl: 1.375rem;
   --cf-text-2xl: 1.5rem;
   --cf-text-3xl: 1.875rem;
 }
@@ -85,6 +85,16 @@
 }
 
 @theme inline {
+  --text-xs: var(--cf-text-xs);
+  --text-xs--line-height: 1.5;
+  --text-sm: var(--cf-text-sm);
+  --text-sm--line-height: 1.6;
+  --text-base: var(--cf-text-base);
+  --text-base--line-height: 1.65;
+  --text-lg: var(--cf-text-lg);
+  --text-lg--line-height: 1.5;
+  --text-xl: var(--cf-text-xl);
+  --text-xl--line-height: 1.4;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-orbitron);
